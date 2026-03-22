@@ -1,25 +1,53 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows.Interop;
 using System.Windows.Threading;
 
 namespace WhisperGate;
 
-/// Hotkey detection:
-/// - For ALL shortcuts, use GetAsyncKeyState polling on DispatcherTimer (UI thread)
-/// - This avoids RegisterHotKey conflicts with superwhisper
-/// - Works for both modifier-only keys and combo keys
+/// Uses a low-level keyboard hook (WH_KEYBOARD_LL) which sees ALL key events
+/// before any app can consume them. No conflicts with superwhisper.
 public class HotkeyManager : IDisposable
 {
+    private const int WH_KEYBOARD_LL = 13;
+    private const int WM_KEYDOWN = 0x0100;
+    private const int WM_KEYUP = 0x0101;
+    private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WM_SYSKEYUP = 0x0105;
+
+    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
+
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KBDLLHOOKSTRUCT
+    {
+        public uint vkCode;
+        public uint scanCode;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
     private readonly Settings _settings;
     private readonly NoiseGateEngine _engine;
-    private DispatcherTimer? _pollTimer;
+    private IntPtr _hookId = IntPtr.Zero;
+    private LowLevelKeyboardProc? _hookProc; // prevent GC
     private bool _pttWasDown;
     private bool _recWasDown;
-    private bool _escWasDown;
     private bool _isRecordingToggled;
 
     public HotkeyManager(Settings settings, NoiseGateEngine engine)
@@ -32,92 +60,109 @@ public class HotkeyManager : IDisposable
     {
         _pttWasDown = false;
         _recWasDown = false;
-        _escWasDown = false;
         _isRecordingToggled = false;
 
-        _pollTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(50) // 20Hz
-        };
-        _pollTimer.Tick += Poll;
-        _pollTimer.Start();
+        _hookProc = HookCallback;
+        using var curProcess = Process.GetCurrentProcess();
+        using var curModule = curProcess.MainModule!;
+        _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, GetModuleHandle(curModule.ModuleName), 0);
+
+        if (_hookId == IntPtr.Zero)
+            App.Log($"SetWindowsHookEx FAILED: error {Marshal.GetLastWin32Error()}");
+        else
+            App.Log($"Keyboard hook installed: {_hookId}");
     }
 
     public void Unregister()
     {
-        _pollTimer?.Stop();
-        _pollTimer = null;
+        if (_hookId != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hookId);
+            _hookId = IntPtr.Zero;
+        }
     }
 
-    private void Poll(object? sender, EventArgs e)
+    private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        // Check Escape
-        bool escDown = IsKeyDown(0x1B); // VK_ESCAPE
-        if (escDown && !_escWasDown)
+        if (nCode >= 0)
         {
-            _isRecordingToggled = false;
-            _pttWasDown = false;
-            _engine.DisengageGate();
-            App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
-        }
-        _escWasDown = escDown;
+            var kbd = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+            int vk = (int)kbd.vkCode;
+            int msg = wParam.ToInt32();
+            bool isDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+            bool isUp = msg == WM_KEYUP || msg == WM_SYSKEYUP;
 
-        // Check Toggle Recording (combo key like Ctrl+Shift+Tab)
-        if (_settings.ToggleRecordingKey != 0)
-        {
-            bool recDown = IsComboDown(_settings.ToggleRecordingKey, _settings.ToggleRecordingModifiers);
-            if (recDown && !_recWasDown)
+            // Escape cancels
+            if (vk == 0x1B && isDown)
             {
-                _isRecordingToggled = !_isRecordingToggled;
-                App.Log($"Toggle Recording: {(_isRecordingToggled ? "ON" : "OFF")}");
-                if (_isRecordingToggled)
+                App.Log("Escape pressed");
+                _isRecordingToggled = false;
+                _pttWasDown = false;
+                _engine.DisengageGate();
+                App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+            }
+
+            // PTT (e.g. Right Control = 0xA3)
+            if (_settings.PushToTalkKey != 0 && vk == _settings.PushToTalkKey)
+            {
+                if (isDown && !_pttWasDown)
                 {
+                    _pttWasDown = true;
+                    App.Log($"PTT DOWN (vk=0x{vk:X})");
                     _engine.EngageGate();
                     App.Instance.UpdateTrayTooltip("WhisperGate - Active");
                 }
-                else
+                else if (isUp && _pttWasDown)
                 {
-                    _engine.DisengageGate();
                     _pttWasDown = false;
-                    App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+                    App.Log("PTT UP");
+                    if (!_isRecordingToggled)
+                    {
+                        _engine.DisengageGate();
+                        App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+                    }
                 }
             }
-            _recWasDown = recDown;
-        }
 
-        // Check PTT (modifier-only or combo)
-        if (_settings.PushToTalkKey != 0)
-        {
-            bool pttDown = IsKeyDown(_settings.PushToTalkKey);
-            if (pttDown && !_pttWasDown)
+            // Toggle Recording (e.g. Ctrl+Shift+Tab)
+            if (_settings.ToggleRecordingKey != 0 && vk == _settings.ToggleRecordingKey && isDown)
             {
-                _pttWasDown = true;
-                App.Log("PTT DOWN");
-                _engine.EngageGate();
-                App.Instance.UpdateTrayTooltip("WhisperGate - Active");
-            }
-            else if (!pttDown && _pttWasDown)
-            {
-                _pttWasDown = false;
-                App.Log("PTT UP");
-                if (!_isRecordingToggled)
+                // Check modifiers
+                bool modsOk = true;
+                int mods = _settings.ToggleRecordingModifiers;
+                if ((mods & 0x0002) != 0) // CTRL
+                    modsOk &= (GetAsyncKeyState(0xA2) & 0x8000) != 0 || (GetAsyncKeyState(0xA3) & 0x8000) != 0;
+                if ((mods & 0x0004) != 0) // SHIFT
+                    modsOk &= (GetAsyncKeyState(0xA0) & 0x8000) != 0 || (GetAsyncKeyState(0xA1) & 0x8000) != 0;
+                if ((mods & 0x0001) != 0) // ALT
+                    modsOk &= (GetAsyncKeyState(0xA4) & 0x8000) != 0 || (GetAsyncKeyState(0xA5) & 0x8000) != 0;
+
+                if (modsOk && !_recWasDown)
                 {
-                    _engine.DisengageGate();
-                    App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+                    _recWasDown = true;
+                    _isRecordingToggled = !_isRecordingToggled;
+                    App.Log($"Toggle Recording: {(_isRecordingToggled ? "ON" : "OFF")}");
+                    if (_isRecordingToggled)
+                    {
+                        _engine.EngageGate();
+                        App.Instance.UpdateTrayTooltip("WhisperGate - Active");
+                    }
+                    else
+                    {
+                        _engine.DisengageGate();
+                        _pttWasDown = false;
+                        App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+                    }
                 }
             }
+            if (_settings.ToggleRecordingKey != 0 && vk == _settings.ToggleRecordingKey && isUp)
+            {
+                _recWasDown = false;
+            }
         }
-    }
 
-    private static bool IsKeyDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
-
-    private static bool IsComboDown(int vk, int mods)
-    {
-        if (!IsKeyDown(vk)) return false;
-        if ((mods & 0x0001) != 0 && !IsKeyDown(0xA4) && !IsKeyDown(0xA5)) return false; // ALT
-        if ((mods & 0x0002) != 0 && !IsKeyDown(0xA2) && !IsKeyDown(0xA3)) return false; // CTRL
-        if ((mods & 0x0004) != 0 && !IsKeyDown(0xA0) && !IsKeyDown(0xA1)) return false; // SHIFT
-        return true;
+        // Always pass the event through — we're just observing, not blocking
+        return CallNextHookEx(_hookId, nCode, wParam, lParam);
     }
 
     public void Dispose() => Unregister();

@@ -6,6 +6,7 @@
     <UseWinUI>true</UseWinUI>
     <UseWindowsForms>true</UseWindowsForms>
     <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
     <ApplicationIcon Condition="Exists('icon.ico')">icon.ico</ApplicationIcon>
     <AssemblyName>WhisperGate</AssemblyName>
     <RootNamespace>WhisperGate</RootNamespace>

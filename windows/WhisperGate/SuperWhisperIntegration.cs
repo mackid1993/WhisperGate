@@ -101,21 +101,19 @@ public static class SuperWhisperIntegration
         {
             var p = part.Trim();
 
-            // Check modifier-only names (no VK, just modifier flag)
-            if (p == "Control") { mods |= MOD_CONTROL; continue; }
-            if (p == "Shift") { mods |= MOD_SHIFT; continue; }
-            if (p == "Alt") { mods |= MOD_ALT; continue; }
-
-            // Check the key map
+            // Look up in key map first (covers all specific keys including ControlLeft etc)
             if (KeyMap.TryGetValue(p, out int mapped))
             {
                 vk = mapped;
-                // Also set modifier flags for modifier keys
-                if (p.StartsWith("Control", StringComparison.OrdinalIgnoreCase)) mods |= MOD_CONTROL;
-                else if (p.StartsWith("Shift", StringComparison.OrdinalIgnoreCase)) mods |= MOD_SHIFT;
-                else if (p.StartsWith("Alt", StringComparison.OrdinalIgnoreCase)) mods |= MOD_ALT;
-                continue;
             }
+
+            // Set modifier flags (for both specific and generic modifier names)
+            if (p.Contains("Control", StringComparison.OrdinalIgnoreCase)) mods |= MOD_CONTROL;
+            else if (p.Contains("Shift", StringComparison.OrdinalIgnoreCase)) mods |= MOD_SHIFT;
+            else if (p.Contains("Alt", StringComparison.OrdinalIgnoreCase)) mods |= MOD_ALT;
+            else if (p.Contains("Meta", StringComparison.OrdinalIgnoreCase)) { /* no Win mod for RegisterHotKey */ }
+
+            if (vk != 0) continue;
 
             // "KeyA" through "KeyZ" → VK is just the uppercase letter
             if (p.StartsWith("Key") && p.Length == 4 && char.IsLetter(p[3]))

@@ -4,7 +4,7 @@ using NAudio.Wave;
 
 namespace WhisperGate;
 
-class NoiseGateEngine
+public class NoiseGateEngine
 {
     private readonly Settings _settings;
     private WaveInEvent? _waveIn;

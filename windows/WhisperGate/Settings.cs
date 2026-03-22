@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace WhisperGate;
 
-class Settings
+public class Settings
 {
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

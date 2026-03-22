@@ -5,7 +5,7 @@ using System.Windows.Interop;
 
 namespace WhisperGate;
 
-class HotkeyManager : IDisposable
+public class HotkeyManager : IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
     private const int HOTKEY_TOGGLE = 1;

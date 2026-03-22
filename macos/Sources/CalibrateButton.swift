@@ -167,6 +167,7 @@ struct CalibrateButton: View {
 class LiveRecorder {
     private var queue: AudioQueueRef?
     private var samples: [Float] = []
+    private let lock = NSLock()
     private let deviceUID: String?
 
     init(deviceUID: String?) { self.deviceUID = deviceUID }
@@ -187,7 +188,10 @@ class LiveRecorder {
             let n = Int(buf.pointee.mAudioDataByteSize) / 4
             if n > 0 {
                 let p = buf.pointee.mAudioData.assumingMemoryBound(to: Float.self)
-                r.samples.append(contentsOf: UnsafeBufferPointer(start: p, count: n))
+                let chunk = Array(UnsafeBufferPointer(start: p, count: n))
+                r.lock.lock()
+                r.samples.append(contentsOf: chunk)
+                r.lock.unlock()
             }
             AudioQueueEnqueueBuffer(aq, buf, 0, nil)
         }, ptr, nil, nil, 0, &queue) == noErr, let q = queue else { return }
@@ -213,6 +217,9 @@ class LiveRecorder {
             Unmanaged.passUnretained(self).release()
         }
         queue = nil
-        return samples
+        lock.lock()
+        let result = samples
+        lock.unlock()
+        return result
     }
 }

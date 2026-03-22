@@ -91,7 +91,9 @@ public class NoiseGateEngine
         }
         else
         {
-            if (db >= threshold - 10)
+            // Open threshold accounts for 30% volume reduction (~10dB)
+            // Add 4dB hysteresis to prevent cycling
+            if (db >= threshold - 10 + 4)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;

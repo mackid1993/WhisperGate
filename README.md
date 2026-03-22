@@ -119,6 +119,12 @@ macos/
 - **macOS** (14+) — available now
 - **Windows** — planned (WinUI3 + system tray)
 
+## Disclaimer
+
+WhisperGate is an independent, open-source project. It is not affiliated with, endorsed by, or sponsored by [superwhisper](https://superwhisper.com) or SuperUltra, Inc. "superwhisper" is a trademark of SuperUltra, Inc. All trademarks belong to their respective owners.
+
+WhisperGate reads superwhisper's preferences solely to sync hotkey shortcuts for user convenience. It does not modify, interfere with, or reverse-engineer superwhisper in any way.
+
 ## License
 
 MIT

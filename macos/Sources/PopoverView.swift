@@ -143,11 +143,9 @@ struct PopoverView: View {
                 Text(String(format: "%.0f dB", state.threshold))
                     .font(.system(.caption, design: .monospaced))
             }
-            Slider(value: $state.threshold, in: -60...0, step: 1)
-            Text("Set just above your room noise level. Calibrate auto-detects this for you.")
+            Slider(value: $state.threshold, in: -60...(-20), step: 1)
+            Text("Set just above your room noise level. Lower = less filtering, higher = more filtering.")
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
-
-            CalibrateButton(state: state)
         }
     }
 

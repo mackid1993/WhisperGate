@@ -19,10 +19,10 @@ final class NoiseGateEngine {
     private var cachedHoldTime: Double = 0.075
     private var consecutiveAbove: Int = 0
 
-    // The reduction: how much to lower mic when gating
-    // Set by calibration based on room noise level
-    private var reductionFactor: Float = 0.03  // ~-30dB reduction
-    private var openThreshold: Float = -50     // threshold adjusted for reduced volume
+    // Fixed gentle reduction: 30% volume when gating (~-10dB)
+    // Gentle enough to avoid harsh volume jumps, strong enough to suppress noise
+    private let reductionFactor: Float = 0.30
+    private var openThreshold: Float = -50
 
     var hasProfile: Bool { true }
     func saveProfile(_ p: VoiceProfile) {}
@@ -39,23 +39,13 @@ final class NoiseGateEngine {
         latestDB = -160
         lastSpeechTime = CFAbsoluteTimeGetCurrent()
 
-        // Calculate reduction and open threshold
-        // reductionFactor converts threshold dB to a volume scalar
-        // e.g. threshold = -20dB means noise is at -20dB
-        // We want to reduce by enough to push noise below transcription level (~-50dB)
-        let noiseDB = cachedThreshold - 3  // noise is ~3dB below threshold
-        let targetDB: Float = -65          // push noise to this level
-        let reductionDB = noiseDB - targetDB  // how much to reduce
-        reductionFactor = pow(10, -reductionDB / 20)  // convert to volume scalar
-        reductionFactor = max(0.001, min(0.5, reductionFactor))  // clamp
-
-        // Open threshold: what level does YOUR voice reach at reduced volume?
-        // Your voice is louder than noise, so at reduced volume it's still above this
-        openThreshold = cachedThreshold - reductionDB
+        // Open threshold: what your voice reads at 30% volume
+        // ~10dB reduction, so shift threshold down by 10
+        openThreshold = cachedThreshold - 10
 
         do { try startQueue() } catch { return }
 
-        // Reduce after queue starts
+        // Start at reduced volume
         gateIsOpen = false
         consecutiveAbove = 0
         AudioDeviceManager.setInputVolume(deviceID, volume: savedVolume * reductionFactor)

@@ -69,6 +69,7 @@ public class HotkeyManager : IDisposable
             if (recDown && !_recWasDown)
             {
                 _isRecordingToggled = !_isRecordingToggled;
+                App.Log($"Toggle Recording: {(_isRecordingToggled ? "ON" : "OFF")}");
                 if (_isRecordingToggled)
                 {
                     _engine.EngageGate();
@@ -91,12 +92,14 @@ public class HotkeyManager : IDisposable
             if (pttDown && !_pttWasDown)
             {
                 _pttWasDown = true;
+                App.Log("PTT DOWN");
                 _engine.EngageGate();
                 App.Instance.UpdateTrayTooltip("WhisperGate - Active");
             }
             else if (!pttDown && _pttWasDown)
             {
                 _pttWasDown = false;
+                App.Log("PTT UP");
                 if (!_isRecordingToggled)
                 {
                     _engine.DisengageGate();

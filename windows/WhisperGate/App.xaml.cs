@@ -19,12 +19,19 @@ public partial class App : Application
         base.OnStartup(e);
 
         AppSettings = Settings.Load();
+        Log($"Settings loaded: PTT=0x{AppSettings.PushToTalkKey:X} ({AppSettings.PushToTalkDisplay}), Rec=0x{AppSettings.ToggleRecordingKey:X} ({AppSettings.ToggleRecordingDisplay}), Threshold={AppSettings.Threshold}");
+
         if (AppSettings.PushToTalkKey == 0 && AppSettings.ToggleRecordingKey == 0)
+        {
+            Log("No shortcuts configured, syncing from superwhisper...");
             SuperWhisperIntegration.SyncShortcuts(AppSettings);
+            Log($"After sync: PTT=0x{AppSettings.PushToTalkKey:X} ({AppSettings.PushToTalkDisplay}), Rec=0x{AppSettings.ToggleRecordingKey:X} ({AppSettings.ToggleRecordingDisplay})");
+        }
 
         Engine = new NoiseGateEngine(AppSettings);
         Hotkeys = new HotkeyManager(AppSettings, Engine);
         Hotkeys.Register();
+        Log("Hotkey polling started");
 
         // System tray
         _trayIcon = new TaskbarIcon
@@ -77,5 +84,20 @@ public partial class App : Application
     {
         if (_trayIcon != null)
             _trayIcon.ToolTipText = text;
+    }
+
+    private static readonly string LogPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "WhisperGate", "debug.log");
+
+    public static void Log(string msg)
+    {
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(LogPath)!;
+            if (!System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+        }
+        catch { }
     }
 }

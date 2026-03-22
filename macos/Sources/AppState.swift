@@ -138,8 +138,10 @@ final class AppState {
         if let r = SuperWhisperIntegration.readToggleRecording() {
             recordingShortcut = r
         }
+        // Re-register hotkeys with new shortcuts
+        hotkeys?.stop()
+        hotkeys?.start()
     }
-
 
     private func save(_ k: String, _ v: Any) { UserDefaults.standard.set(v, forKey: k) }
     private func saveCombo(_ c: KeyCombo?, _ k: String) {

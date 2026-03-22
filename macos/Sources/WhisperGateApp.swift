@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import AppKit
 
 @main
 struct WhisperGateApp: App {
@@ -18,9 +19,26 @@ struct WhisperGateApp: App {
                     .environment(state)
             }
         } label: {
-            Image(systemName: state.needsSetup ? "exclamationmark.circle" : state.menuBarIcon)
+            Image(nsImage: Self.menuBarImage(state.menuBarIcon, color: NSColor(state.menuBarIconColor)))
         }
         .menuBarExtraStyle(.window)
+    }
+
+    static func menuBarImage(_ symbolName: String, color: NSColor) -> NSImage {
+        let size = NSSize(width: 22, height: 22)
+        let img = NSImage(size: size, flipped: false) { rect in
+            guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))?
+                .withSymbolConfiguration(.init(paletteColors: [color])) else { return false }
+            let symbolSize = symbol.size
+            let x = round((rect.width - symbolSize.width) / 2) + 2
+            let y = round((rect.height - symbolSize.height) / 2)
+            symbol.draw(in: NSRect(x: x, y: y, width: symbolSize.width, height: symbolSize.height))
+            return true
+        }
+        img.isTemplate = false
+        img.alignmentRect = NSRect(origin: .zero, size: size)
+        return img
     }
 
     init() {

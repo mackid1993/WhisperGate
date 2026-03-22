@@ -84,11 +84,14 @@ final class AppState {
     var engine: NoiseGateEngine!
     var hotkeys: HotkeyMonitor!
 
-    var menuBarIcon: String {
-        if !isEnabled { return "mic.slash" }
-        if isGateEngaged && !isGateOpen { return "waveform.badge.minus" }
-        if isGateEngaged { return "waveform.badge.mic" }
-        return "mic"
+    var menuBarIcon: String { "mic.fill" }
+
+    var menuBarIconColor: Color {
+        if needsSetup { return .red }
+        if !isEnabled { return .secondary }
+        if isGateEngaged && !isGateOpen { return .orange }
+        if isGateEngaged { return .green }
+        return .secondary
     }
 
     var statusText: String {

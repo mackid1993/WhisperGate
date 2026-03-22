@@ -1,28 +1,25 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
+using System;
+using System.Windows;
+using System.Windows.Threading;
 
 namespace WhisperGate;
 
-public sealed partial class SettingsWindow : Window
+public partial class SettingsWindow : Window
 {
     private readonly Settings _settings;
-    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _uiTimer;
+    private readonly DispatcherTimer _uiTimer;
 
     public SettingsWindow()
     {
         InitializeComponent();
         _settings = App.Instance.AppSettings;
-
-        // Load current values
         RefreshDisplay();
 
-        // Update status periodically
-        _uiTimer = DispatcherQueue.CreateTimer();
-        _uiTimer.Interval = System.TimeSpan.FromMilliseconds(250);
+        _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _uiTimer.Tick += (_, _) => UpdateStatus();
         _uiTimer.Start();
 
-        Closed += (_, _) => _uiTimer.Stop();
+        Closing += (_, e) => { e.Cancel = true; Hide(); };
     }
 
     private void RefreshDisplay()
@@ -31,18 +28,17 @@ public sealed partial class SettingsWindow : Window
         RecText.Text = _settings.ToggleRecordingDisplay;
         ThresholdSlider.Value = _settings.Threshold;
         ThresholdValue.Text = $"{_settings.Threshold} dB";
-        StartAtLoginToggle.IsOn = _settings.StartAtLogin;
     }
 
     private void UpdateStatus()
     {
+        if (!IsVisible) return;
         var engine = App.Instance.Engine;
         if (engine.IsEngaged)
         {
             StatusText.Text = engine.IsGateOpen ? "Full Volume" : "Noise Reduced";
             StatusDetail.Text = engine.IsGateOpen ? "Your voice is passing through" : "Mic level reduced — filtering noise";
-            var normalized = System.Math.Max(0, System.Math.Min(100, (engine.LatestDB + 80) / 80 * 100));
-            LevelBar.Value = normalized;
+            LevelBar.Value = Math.Max(0, Math.Min(100, (engine.LatestDB + 80) / 80 * 100));
         }
         else
         {
@@ -52,8 +48,9 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private void OnThresholdChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    private void OnThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        if (_settings == null) return;
         _settings.Threshold = (float)e.NewValue;
         ThresholdValue.Text = $"{(int)e.NewValue} dB";
         _settings.Save();
@@ -66,11 +63,5 @@ public sealed partial class SettingsWindow : Window
         App.Instance.Hotkeys.Unregister();
         App.Instance.Hotkeys.Register();
         RefreshDisplay();
-    }
-
-    private void OnStartAtLoginChanged(object sender, RoutedEventArgs e)
-    {
-        _settings.StartAtLogin = StartAtLoginToggle.IsOn;
-        _settings.Save();
     }
 }

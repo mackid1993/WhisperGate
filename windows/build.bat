@@ -17,7 +17,7 @@ echo Restoring packages...
 dotnet restore
 
 echo Building...
-dotnet publish -c Release -r win-x64 --self-contained -o "%~dp0build"
+dotnet publish -c Release -r win-x64 --self-contained -o "%~dp0build" /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 
 if %errorlevel% equ 0 (
     copy /y icon.ico "%~dp0build\" >nul 2>nul

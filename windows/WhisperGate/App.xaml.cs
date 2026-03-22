@@ -1,29 +1,24 @@
 using System;
-using H.NotifyIcon;
-using Microsoft.UI.Xaml;
+using System.Drawing;
+using System.Windows;
+using Hardcodet.Wpf.TaskbarNotification;
 
 namespace WhisperGate;
 
 public partial class App : Application
 {
     private TaskbarIcon? _trayIcon;
-    private SettingsWindow? _settingsWindow;
-
     public NoiseGateEngine Engine { get; private set; } = null!;
     public HotkeyManager Hotkeys { get; private set; } = null!;
     public Settings AppSettings { get; private set; } = null!;
 
     public static App Instance => (App)Current;
 
-    public App()
+    protected override void OnStartup(StartupEventArgs e)
     {
-        InitializeComponent();
-    }
+        base.OnStartup(e);
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
-    {
         AppSettings = Settings.Load();
-
         if (AppSettings.PushToTalkKey == 0 && AppSettings.ToggleRecordingKey == 0)
             SuperWhisperIntegration.SyncShortcuts(AppSettings);
 
@@ -31,42 +26,51 @@ public partial class App : Application
         Hotkeys = new HotkeyManager(AppSettings, Engine);
         Hotkeys.Register();
 
-        // Create tray icon
+        // System tray
         _trayIcon = new TaskbarIcon
         {
             ToolTipText = "WhisperGate - Standby",
-            Icon = new System.Drawing.Icon("icon.ico"),
+            Icon = new Icon(System.IO.Path.Combine(AppContext.BaseDirectory, "icon.ico")),
         };
+        _trayIcon.TrayMouseDoubleClick += (_, _) => ShowSettings();
 
-        var menu = new H.NotifyIcon.Core.PopupMenu();
-        menu.Items.Add(new H.NotifyIcon.Core.PopupMenuItem("Settings...", (_, _) => ShowSettings()));
-        menu.Items.Add(new H.NotifyIcon.Core.PopupMenuSeparator());
-        menu.Items.Add(new H.NotifyIcon.Core.PopupMenuItem("Sync from superwhisper", (_, _) =>
+        var menu = new System.Windows.Controls.ContextMenu();
+        var settingsItem = new System.Windows.Controls.MenuItem { Header = "Settings..." };
+        settingsItem.Click += (_, _) => ShowSettings();
+        var syncItem = new System.Windows.Controls.MenuItem { Header = "Sync from superwhisper" };
+        syncItem.Click += (_, _) =>
         {
             SuperWhisperIntegration.SyncShortcuts(AppSettings);
             AppSettings.Save();
             Hotkeys.Unregister();
             Hotkeys.Register();
-        }));
-        menu.Items.Add(new H.NotifyIcon.Core.PopupMenuSeparator());
-        menu.Items.Add(new H.NotifyIcon.Core.PopupMenuItem("Quit", (_, _) =>
+        };
+        var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit" };
+        quitItem.Click += (_, _) =>
         {
             Engine.DisengageGate();
             _trayIcon?.Dispose();
-            Exit();
-        }));
+            Shutdown();
+        };
+        menu.Items.Add(settingsItem);
+        menu.Items.Add(new System.Windows.Controls.Separator());
+        menu.Items.Add(syncItem);
+        menu.Items.Add(new System.Windows.Controls.Separator());
+        menu.Items.Add(quitItem);
         _trayIcon.ContextMenu = menu;
-        _trayIcon.TrayMouseDoubleClick += (_, _) => ShowSettings();
+
+        // Hide the main window on startup — tray only
+        MainWindow?.Hide();
     }
 
     public void ShowSettings()
     {
-        if (_settingsWindow == null)
+        if (MainWindow == null || !MainWindow.IsLoaded)
         {
-            _settingsWindow = new SettingsWindow();
-            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            MainWindow = new SettingsWindow();
         }
-        _settingsWindow.Activate();
+        MainWindow.Show();
+        MainWindow.Activate();
     }
 
     public void UpdateTrayTooltip(string text)

@@ -82,8 +82,7 @@ class NoiseGateEngine
 
         if (_gateIsOpen)
         {
-            if (db >= threshold)
-                _lastSpeechTime = now;
+            if (db >= threshold) _lastSpeechTime = now;
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {
                 _gateIsOpen = false;
@@ -92,8 +91,7 @@ class NoiseGateEngine
         }
         else
         {
-            float openThreshold = threshold - 10;
-            if (db >= openThreshold)
+            if (db >= threshold - 10)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;

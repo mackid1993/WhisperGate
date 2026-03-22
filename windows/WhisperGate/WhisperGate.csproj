@@ -5,13 +5,11 @@
     <Nullable>enable</Nullable>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
-    <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <ApplicationIcon Condition="Exists('icon.ico')">icon.ico</ApplicationIcon>
     <AssemblyName>WhisperGate</AssemblyName>
     <RootNamespace>WhisperGate</RootNamespace>
-    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <Platforms>x64;ARM64</Platforms>
+    <Platform>x64</Platform>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />

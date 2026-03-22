@@ -29,6 +29,7 @@ static class SuperWhisperIntegration
                     settings.PushToTalkKey = vk;
                     settings.PushToTalkModifiers = mods;
                     settings.PushToTalkDisplay = str;
+                    App.Log($"Synced PTT: '{str}' → vk=0x{vk:X} mods=0x{mods:X}");
                 }
             }
             if (root.TryGetProperty("toggleRecordingShortcut", out var rec))
@@ -40,6 +41,7 @@ static class SuperWhisperIntegration
                     settings.ToggleRecordingKey = vk;
                     settings.ToggleRecordingModifiers = mods;
                     settings.ToggleRecordingDisplay = str;
+                    App.Log($"Synced Rec: '{str}' → vk=0x{vk:X} mods=0x{mods:X}");
                 }
             }
             settings.Save();

@@ -50,18 +50,10 @@ public partial class App : Application
         };
         _trayIcon.TrayMouseDoubleClick += (_, _) => ShowSettings();
 
-        // Modern styled context menu
-        var menu = new System.Windows.Controls.ContextMenu
-        {
-            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2D, 0x2D, 0x2D)),
-            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x40, 0x40, 0x40)),
-            Foreground = System.Windows.Media.Brushes.White,
-            FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
-            FontSize = 13,
-        };
-        var settingsItem = new System.Windows.Controls.MenuItem { Header = "  Settings..." };
+        var menu = new System.Windows.Controls.ContextMenu();
+        var settingsItem = new System.Windows.Controls.MenuItem { Header = "Settings..." };
         settingsItem.Click += (_, _) => ShowSettings();
-        var syncItem = new System.Windows.Controls.MenuItem { Header = "  Sync from superwhisper" };
+        var syncItem = new System.Windows.Controls.MenuItem { Header = "Sync from superwhisper" };
         syncItem.Click += (_, _) =>
         {
             SuperWhisperIntegration.SyncShortcuts(AppSettings);
@@ -69,7 +61,7 @@ public partial class App : Application
             Hotkeys.Unregister();
             Hotkeys.Register();
         };
-        var quitItem = new System.Windows.Controls.MenuItem { Header = "  Quit WhisperGate" };
+        var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit WhisperGate" };
         quitItem.Click += (_, _) =>
         {
             Engine.DisengageGate();

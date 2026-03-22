@@ -4,8 +4,6 @@ A lightweight noise gate for [superwhisper](https://superwhisper.com) dictation.
 
 ## How It Works
 
-WhisperGate syncs your superwhisper hotkeys and activates automatically when you dictate:
-
 1. **Press your superwhisper hotkey** — WhisperGate reduces your mic level to filter background noise
 2. **Start speaking** — your voice is detected and mic restores to full volume instantly
 3. **Stop speaking** — mic level drops again after a brief hold, silencing background noise
@@ -16,11 +14,11 @@ No virtual audio devices. No complex routing. Just smart mic volume control time
 ## Features
 
 - Syncs hotkeys directly from superwhisper preferences (Push to Talk + Toggle Recording)
-- Simple threshold slider — set it just above your background noise level
-- Gentle volume reduction when gating (30% / ~10dB) — no harsh audio artifacts
+- Threshold slider — set it just above your background noise level
+- Gated Volume slider — control how much to reduce the mic when not speaking (0% = silent, 100% = no reduction)
 - Escape key cancels dictation (matches superwhisper behavior)
 - Near-zero CPU when idle — mic only active during dictation
-- System tray icon changes color to show gate state (standby / active / gating)
+- System tray icon changes color to show gate state
 - Start at login option
 
 ---
@@ -32,23 +30,32 @@ No virtual audio devices. No complex routing. Just smart mic volume control time
 - macOS 14 (Sonoma) or later
 - Xcode Command Line Tools
 
-### Building
+### How to Build
 
+1. Open Terminal
+2. Install Xcode Command Line Tools (if you haven't already):
+   ```bash
+   xcode-select --install
+   ```
+3. Clone the repo:
+   ```bash
+   git clone https://github.com/mackid1993/WhisperGate.git
+   cd WhisperGate
+   ```
+4. Build:
+   ```bash
+   cd macos
+   ./build.sh
+   ```
+5. Run:
+   ```bash
+   open build/WhisperGate.app
+   ```
+
+Or copy it to your Applications folder:
 ```bash
-# Install command line tools (if not already installed)
-xcode-select --install
-
-# Build
-cd macos
-./build.sh
-
-# Run
-open build/WhisperGate.app
+cp -R build/WhisperGate.app /Applications/
 ```
-
-The build script compiles a universal binary (Apple Silicon + Intel), generates the app icon, and signs it ad-hoc.
-
-### Setup
 
 On first launch, WhisperGate will ask for **Microphone** permission and show your synced superwhisper shortcuts.
 
@@ -59,65 +66,45 @@ On first launch, WhisperGate will ask for **Microphone** permission and show you
 ### Requirements
 
 - Windows 10 (build 19041) or later
-- [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) (download the SDK installer for your architecture)
+- [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) — download the **SDK** installer (not Runtime) for your architecture (x64 or ARM64)
 
-### Building
+### How to Build
 
-```cmd
-cd windows
-build.bat
-```
+1. Install the .NET 8 SDK from the link above
+2. Clone the repo:
+   ```cmd
+   git clone https://github.com/mackid1993/WhisperGate.git
+   cd WhisperGate
+   ```
+3. Build:
+   ```cmd
+   cd windows
+   build.bat
+   ```
+4. Run `windows\build\WhisperGate.exe`
 
-The build script compiles a self-contained exe with all dependencies included. The output is in `windows\build\WhisperGate.exe`.
+WhisperGate launches silently to the system tray. Double-click the tray icon or right-click > **Settings** to configure.
 
-### Setup
-
-WhisperGate launches silently to the system tray. Double-click the tray icon or right-click and select **Settings** to open the settings window.
-
-Shortcuts are automatically synced from superwhisper's preferences at `%APPDATA%\com.superwhisper.app\preferences.json`. Click **Sync** in the settings window if you change your superwhisper shortcuts.
+Shortcuts are automatically synced from superwhisper's preferences. Click **Sync** in settings if you change your superwhisper shortcuts.
 
 ---
 
-## Setting the Threshold
+## Settings
 
-Use the threshold slider to control how aggressive the gate is:
+### Threshold
+Controls how loud audio needs to be to open the gate (let your voice through).
+- **Lower** (toward -60 dB): less filtering, gate opens more easily
+- **Higher** (toward -20 dB): more filtering, only louder speech opens the gate
 
-- **Lower values** (toward -60 dB): less filtering, gate opens more easily
-- **Higher values** (toward -20 dB): more filtering, only louder speech opens the gate
+Set it just above your background noise level.
 
-Set it just above your background noise level. If you have a TV on, slide it higher. In a quiet room, slide it lower.
+### Gated Volume
+Controls how much the mic volume is reduced when you're not speaking.
+- **0%**: mic fully silenced when gating (most aggressive)
+- **30%**: gentle reduction (default)
+- **100%**: no reduction at all
 
-## How the Gate Works
-
-```
-Hotkey pressed -> mic volume reduced to 30%
-       |
-Your voice detected (above threshold) -> mic restored to full volume
-       |
-You stop speaking (300ms hold) -> mic volume reduced to 30% again
-       |
-Hotkey released or Escape pressed -> mic fully restored to normal
-```
-
-- **Threshold**: user-adjustable, -60 to -20 dB
-- **Reduction**: fixed 30% volume (~10 dB drop) — gentle, no choppy artifacts
-- **Hold time**: 300ms — keeps gate open during natural pauses between words
-- **Detection**: energy-based (RMS level), continuously monitored
-- **No muting/unmuting cycles**: just two volume levels (full and reduced)
-
-## Project Structure
-
-```
-macos/
-  Sources/           — Swift source files
-  Resources/         — Info.plist, entitlements
-  build.sh           — Build script (requires Xcode CLI tools)
-  generate_icon.sh   — App icon generator
-
-windows/
-  WhisperGate/       — C# / WPF source files
-  build.bat          — Build script (requires .NET 8 SDK)
-```
+If background noise still leaks through, lower this value.
 
 ## Disclaimer
 

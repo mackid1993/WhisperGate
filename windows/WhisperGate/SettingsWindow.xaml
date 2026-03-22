@@ -150,6 +150,22 @@
                             IsSnapToTickEnabled="True" TickFrequency="1"
                             ValueChanged="OnThresholdChanged"/>
                     <TextBlock Text="Set just above your room noise level." FontSize="11"
+                               Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,12"/>
+
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Gated Volume" FontSize="13" Foreground="{StaticResource FgSecondaryBrush}"/>
+                        <TextBlock x:Name="ReductionValue" Grid.Column="1" Text="30%"
+                                   FontFamily="Cascadia Mono,Consolas" FontSize="13"
+                                   Foreground="{StaticResource FgBrush}"/>
+                    </Grid>
+                    <Slider x:Name="ReductionSlider" Minimum="0" Maximum="100" Value="30"
+                            IsSnapToTickEnabled="True" TickFrequency="5"
+                            ValueChanged="OnReductionChanged"/>
+                    <TextBlock Text="Mic volume when not speaking. 0% = fully silenced. 100% = no reduction." FontSize="11"
                                Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,0"/>
                 </StackPanel>
             </Border>

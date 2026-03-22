@@ -58,6 +58,7 @@ final class AppState {
     // Persisted
     var isEnabled: Bool = true { didSet { guard didFinishInit else { return }; save("isEnabled", isEnabled) } }
     var threshold: Float = -12 { didSet { guard didFinishInit else { return }; save("threshold", threshold) } }
+    var reductionPercent: Float = 30 { didSet { guard didFinishInit else { return }; save("reductionPercent", reductionPercent) } }
     var holdTimeMs: Double = 400 { didSet { guard didFinishInit else { return }; save("holdTimeMs", holdTimeMs) } }
     var inputDeviceUID: String? {
         didSet {
@@ -108,6 +109,7 @@ final class AppState {
         let d = UserDefaults.standard
         isEnabled = d.object(forKey: "isEnabled") as? Bool ?? true
         threshold = d.object(forKey: "threshold") as? Float ?? -40
+        reductionPercent = d.object(forKey: "reductionPercent") as? Float ?? 30
         holdTimeMs = d.object(forKey: "holdTimeMs") as? Double ?? 300
         inputDeviceUID = d.string(forKey: "inputDeviceUID")
         pushToTalkShortcut = loadCombo("ptt")

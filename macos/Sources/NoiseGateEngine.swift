@@ -2,9 +2,8 @@ import AudioToolbox
 import CoreAudio
 import Accelerate
 
-/// Simple noise gate: calibrate room noise, then reduce mic volume by that amount
-/// when you're not speaking. No muting, no peeking — just dB reduction.
-/// Your voice is always detectable. CNN gets squashed.
+/// Noise gate engine — exact same logic as the Windows version.
+/// Simple: two volume levels (full and reduced), energy-based threshold, hold time.
 final class NoiseGateEngine {
     private weak var state: AppState?
     private var audioQueue: AudioQueueRef?
@@ -12,17 +11,12 @@ final class NoiseGateEngine {
     private var savedVolume: Float = 1.0
     private var uiTimer: Timer?
 
-    private var gateIsOpen: Bool = true
+    private var gateIsOpen: Bool = false
     private var lastSpeechTime: CFAbsoluteTime = 0
     private var latestDB: Float = -160
-    private var cachedThreshold: Float = -20
-    private var cachedHoldTime: Double = 0.075
-    private var consecutiveAbove: Int = 0
-
-    // Fixed gentle reduction: 30% volume when gating (~-10dB)
-    // Gentle enough to avoid harsh volume jumps, strong enough to suppress noise
-    private let reductionFactor: Float = 0.30
-    private var openThreshold: Float = -50
+    private var cachedThreshold: Float = -30
+    private var cachedHoldTime: Double = 0.3
+    private var reductionFactor: Float = 0.30
 
     var hasProfile: Bool { true }
     func saveProfile(_ p: VoiceProfile) {}
@@ -36,19 +30,15 @@ final class NoiseGateEngine {
         savedVolume = AudioDeviceManager.getInputVolume(deviceID) ?? 1.0
         cachedThreshold = state.threshold
         cachedHoldTime = state.holdTimeMs / 1000.0
+        reductionFactor = state.reductionPercent / 100.0
         latestDB = -160
-        lastSpeechTime = CFAbsoluteTimeGetCurrent()
-
-        // Open threshold: what your voice reads at 30% volume
-        // ~10dB reduction, so shift threshold down by 10
-        openThreshold = cachedThreshold - 10
+        lastSpeechTime = 0
 
         do { try startQueue() } catch { return }
 
-        // Start at reduced volume
+        // Start gated
         gateIsOpen = false
-        consecutiveAbove = 0
-        AudioDeviceManager.setInputVolume(deviceID, volume: savedVolume * reductionFactor)
+        AudioDeviceManager.setInputVolume(deviceID, volume: max(savedVolume * reductionFactor, 0.001))
         startUITimer()
         state.isGateEngaged = true
         state.isGateOpen = false
@@ -57,20 +47,15 @@ final class NoiseGateEngine {
     func disengageGate() {
         stopUITimer()
         stopQueue()
-        // Fully restore mic state
         AudioDeviceManager.setInputMute(deviceID, muted: false)
         AudioDeviceManager.setInputVolume(deviceID, volume: savedVolume)
         gateIsOpen = true
-        consecutiveAbove = 0
         guard let state else { return }
         state.isGateEngaged = false
         state.isGateOpen = true
         state.currentLevel = -160
         state.currentLevelSmoothed = -160
     }
-
-    /// Check if the engine is currently holding the mic
-    var isActive: Bool { audioQueue != nil }
 
     func stop() { if audioQueue != nil { disengageGate() } }
 
@@ -79,7 +64,7 @@ final class NoiseGateEngine {
         else if let id = AudioDeviceManager.defaultInputDevice() { deviceID = id }
     }
 
-    // MARK: - Audio callback — simple, no mute/unmute cycling
+    // MARK: - Audio callback (matches Windows OnDataAvailable exactly)
 
     private func onBuffer(_ ref: AudioQueueBufferRef) {
         guard audioQueue != nil else { return }
@@ -87,25 +72,21 @@ final class NoiseGateEngine {
         guard n > 0 else { return }
         var ms: Float = 0
         vDSP_measqv(ref.pointee.mAudioData.assumingMemoryBound(to: Float.self), 1, &ms, vDSP_Length(n))
-        let rawDB: Float = ms > 0 ? 10 * log10(ms) : -160
-        latestDB = rawDB
+        let db: Float = ms > 0 ? 10 * log10(ms) : -160
+        latestDB = db
 
         let now = CFAbsoluteTimeGetCurrent()
 
         if gateIsOpen {
-            // Full volume — check if speech stopped
-            if rawDB >= cachedThreshold {
+            if db >= cachedThreshold {
                 lastSpeechTime = now
             } else if (now - lastSpeechTime) > cachedHoldTime {
-                // Silence — reduce volume
                 gateIsOpen = false
-                AudioDeviceManager.setInputVolume(deviceID, volume: savedVolume * reductionFactor)
+                AudioDeviceManager.setInputVolume(deviceID, volume: max(savedVolume * reductionFactor, 0.001))
             }
         } else {
-            // Reduced volume — check if speech started
-            // Audio is quieter by reductionFactor, so use adjusted threshold
-            if rawDB >= openThreshold {
-                // Voice detected through reduced volume — restore full volume
+            // Same as Windows: threshold - 10 + 4 = threshold - 6
+            if db >= cachedThreshold - 6 {
                 gateIsOpen = true
                 lastSpeechTime = now
                 AudioDeviceManager.setInputVolume(deviceID, volume: savedVolume)
@@ -124,6 +105,7 @@ final class NoiseGateEngine {
             state.currentLevelSmoothed = 0.3 * self.latestDB + 0.7 * state.currentLevelSmoothed
             self.cachedThreshold = state.threshold
             self.cachedHoldTime = state.holdTimeMs / 1000.0
+            self.reductionFactor = state.reductionPercent / 100.0
         }
     }
 

@@ -12,7 +12,7 @@ public class NoiseGateEngine
     private float _savedVolume = 1f;
     private bool _gateIsOpen = true;
     private double _lastSpeechTime;
-    private readonly float _reductionFactor = 0.30f;
+    private float _reductionFactor = 0.30f;
     private readonly double _holdTimeMs = 300;
 
     public float LatestDB { get; private set; } = -160;
@@ -40,6 +40,7 @@ public class NoiseGateEngine
 
             _gateIsOpen = false;
             _lastSpeechTime = 0;
+            _reductionFactor = Math.Max(_settings.ReductionPercent / 100f, 0.001f);
             SetVolume(_savedVolume * _reductionFactor);
         }
         catch { DisengageGate(); }

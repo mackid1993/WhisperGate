@@ -19,20 +19,15 @@ public partial class App : Application
         base.OnStartup(e);
 
         AppSettings = Settings.Load();
-        Log("=== WhisperGate v2 ===");
-        Log($"Settings loaded: PTT=0x{AppSettings.PushToTalkKey:X} ({AppSettings.PushToTalkDisplay}), Rec=0x{AppSettings.ToggleRecordingKey:X} ({AppSettings.ToggleRecordingDisplay}), Threshold={AppSettings.Threshold}");
 
         if (AppSettings.PushToTalkKey == 0 && AppSettings.ToggleRecordingKey == 0)
         {
-            Log("No shortcuts configured, syncing from superwhisper...");
             SuperWhisperIntegration.SyncShortcuts(AppSettings);
-            Log($"After sync: PTT=0x{AppSettings.PushToTalkKey:X} ({AppSettings.PushToTalkDisplay}), Rec=0x{AppSettings.ToggleRecordingKey:X} ({AppSettings.ToggleRecordingDisplay})");
         }
 
         Engine = new NoiseGateEngine(AppSettings);
         Hotkeys = new HotkeyManager(AppSettings, Engine);
         Hotkeys.Register();
-        Log("Hotkey polling started");
 
         // Tray icon state timer (updates icon color based on gate state)
         var iconTimer = new System.Windows.Threading.DispatcherTimer

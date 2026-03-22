@@ -52,15 +52,6 @@ The build script compiles a universal binary (Apple Silicon + Intel), generates 
 
 On first launch, WhisperGate will ask for **Microphone** permission and show your synced superwhisper shortcuts.
 
-### macOS Tip: Enable Voice Isolation
-
-For the best results, enable macOS Voice Isolation:
-
-1. Open **System Settings > Sound**
-2. Under **Microphone Mode**, select **Voice Isolation**
-
-Voice Isolation uses Apple's neural engine to separate your voice from background noise at the hardware level. Combined with WhisperGate, this gives extremely clean dictation even in noisy environments. Available on Macs with Apple Silicon (M1 or later).
-
 ---
 
 ## Windows

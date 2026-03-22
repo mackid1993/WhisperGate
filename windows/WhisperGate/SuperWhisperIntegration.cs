@@ -64,11 +64,14 @@ static class SuperWhisperIntegration
         {
             switch (part.Trim())
             {
-                case "Control": case "ControlLeft": mods |= MOD_CONTROL; break;
+                case "Control": mods |= MOD_CONTROL; break;
+                case "ControlLeft": vk = VK_LCONTROL; mods |= MOD_CONTROL; break;
                 case "ControlRight": vk = VK_RCONTROL; mods |= MOD_CONTROL; break;
-                case "Shift": case "ShiftLeft": mods |= MOD_SHIFT; break;
+                case "Shift": mods |= MOD_SHIFT; break;
+                case "ShiftLeft": vk = VK_LSHIFT; mods |= MOD_SHIFT; break;
                 case "ShiftRight": vk = VK_RSHIFT; mods |= MOD_SHIFT; break;
-                case "Alt": case "AltLeft": mods |= MOD_ALT; break;
+                case "Alt": mods |= MOD_ALT; break;
+                case "AltLeft": vk = VK_LMENU; mods |= MOD_ALT; break;
                 case "AltRight": vk = VK_RMENU; mods |= MOD_ALT; break;
                 case "Tab": vk = VK_TAB; break;
                 case "Space": vk = VK_SPACE; break;

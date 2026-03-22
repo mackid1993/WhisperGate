@@ -30,6 +30,7 @@ public partial class SettingsWindow : Window
         RecText.Text = _settings.ToggleRecordingDisplay;
         ThresholdSlider.Value = _settings.Threshold;
         ThresholdValue.Text = $"{_settings.Threshold} dB";
+        StartAtLoginCheck.IsChecked = _settings.StartAtLogin;
     }
 
     private void UpdateStatus()
@@ -77,5 +78,24 @@ public partial class SettingsWindow : Window
         App.Instance.Hotkeys.Unregister();
         App.Instance.Hotkeys.Register();
         RefreshDisplay();
+    }
+
+    private void OnStartAtLoginChanged(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null) return;
+        _settings.StartAtLogin = StartAtLoginCheck.IsChecked == true;
+        _settings.Save();
+
+        // Add/remove from Windows startup via registry
+        try
+        {
+            var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
+            if (_settings.StartAtLogin)
+                key?.SetValue("WhisperGate", $"\"{Environment.ProcessPath}\"");
+            else
+                key?.DeleteValue("WhisperGate", false);
+        }
+        catch { }
     }
 }

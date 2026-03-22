@@ -4,9 +4,9 @@
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWinUI>true</UseWinUI>
-    <UseWindowsForms>true</UseWindowsForms>
     <WindowsPackageType>None</WindowsPackageType>
     <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <ApplicationIcon Condition="Exists('icon.ico')">icon.ico</ApplicationIcon>
     <AssemblyName>WhisperGate</AssemblyName>
     <RootNamespace>WhisperGate</RootNamespace>

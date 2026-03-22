@@ -9,6 +9,9 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // Required for WinUI3 single-file publish
+        Environment.SetEnvironmentVariable("MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY", AppContext.BaseDirectory);
+
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(p =>
         {

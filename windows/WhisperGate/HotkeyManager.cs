@@ -9,17 +9,40 @@ class HotkeyManager : IDisposable
     private const int WM_HOTKEY = 0x0312;
     private const int HOTKEY_TOGGLE = 1;
     private const int HOTKEY_ESCAPE = 2;
+    private const int HOTKEY_PTT = 3;
 
-    // Modifier-only VK codes
     private static readonly int[] ModifierVKs = { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C };
 
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vk);
+    [DllImport("user32.dll")] private static extern IntPtr CreateWindowEx(uint exStyle, string className, string windowName, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+    [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern ushort RegisterClass(ref WNDCLASS wc);
+    [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WNDCLASS
+    {
+        public uint style;
+        public WndProcDelegate lpfnWndProc;
+        public int cbClsExtra;
+        public int cbWndExtra;
+        public IntPtr hInstance;
+        public IntPtr hIcon;
+        public IntPtr hCursor;
+        public IntPtr hbrBackground;
+        public string? lpszMenuName;
+        public string lpszClassName;
+    }
 
     private readonly Settings _settings;
     private readonly NoiseGateEngine _engine;
-    private HotkeyWindow? _window;
+    private IntPtr _hWnd;
+    private WndProcDelegate? _wndProc; // prevent GC
     private Timer? _pollTimer;
     private bool _pttWasDown;
     private bool _isRecordingToggled;
@@ -32,19 +55,25 @@ class HotkeyManager : IDisposable
 
     public void Register()
     {
-        _window = new HotkeyWindow(this);
+        // Create a message-only window for WM_HOTKEY
+        _wndProc = WndProc;
+        var wc = new WNDCLASS
+        {
+            lpfnWndProc = _wndProc,
+            hInstance = GetModuleHandle(null),
+            lpszClassName = "WhisperGateHotkey"
+        };
+        RegisterClass(ref wc);
+        _hWnd = CreateWindowEx(0, "WhisperGateHotkey", "", 0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, wc.hInstance, IntPtr.Zero);
 
         // Escape always cancels
-        RegisterHotKey(_window.Handle, HOTKEY_ESCAPE, 0, 0x1B);
+        RegisterHotKey(_hWnd, HOTKEY_ESCAPE, 0, 0x1B);
 
-        // Toggle Recording (combo like Ctrl+Shift+Tab)
+        // Toggle Recording
         if (_settings.ToggleRecordingKey != 0 && !IsModifierOnly(_settings.ToggleRecordingKey))
-        {
-            RegisterHotKey(_window.Handle, HOTKEY_TOGGLE, (uint)_settings.ToggleRecordingModifiers,
-                          (uint)_settings.ToggleRecordingKey);
-        }
+            RegisterHotKey(_hWnd, HOTKEY_TOGGLE, (uint)_settings.ToggleRecordingModifiers, (uint)_settings.ToggleRecordingKey);
 
-        // PTT — modifier-only uses polling
+        // PTT
         if (_settings.PushToTalkKey != 0)
         {
             if (IsModifierOnly(_settings.PushToTalkKey))
@@ -54,8 +83,7 @@ class HotkeyManager : IDisposable
             }
             else
             {
-                RegisterHotKey(_window.Handle, 3, (uint)_settings.PushToTalkModifiers,
-                              (uint)_settings.PushToTalkKey);
+                RegisterHotKey(_hWnd, HOTKEY_PTT, (uint)_settings.PushToTalkModifiers, (uint)_settings.PushToTalkKey);
             }
         }
     }
@@ -64,21 +92,29 @@ class HotkeyManager : IDisposable
     {
         _pollTimer?.Dispose();
         _pollTimer = null;
-        if (_window != null)
+        if (_hWnd != IntPtr.Zero)
         {
-            UnregisterHotKey(_window.Handle, HOTKEY_TOGGLE);
-            UnregisterHotKey(_window.Handle, HOTKEY_ESCAPE);
-            UnregisterHotKey(_window.Handle, 3);
-            _window.Dispose();
-            _window = null;
+            UnregisterHotKey(_hWnd, HOTKEY_TOGGLE);
+            UnregisterHotKey(_hWnd, HOTKEY_ESCAPE);
+            UnregisterHotKey(_hWnd, HOTKEY_PTT);
+            DestroyWindow(_hWnd);
+            _hWnd = IntPtr.Zero;
         }
+    }
+
+    private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        if (msg == WM_HOTKEY)
+        {
+            OnHotKey(wParam.ToInt32());
+            return IntPtr.Zero;
+        }
+        return DefWindowProc(hWnd, msg, wParam, lParam);
     }
 
     private void PollModifier(object? state)
     {
-        int vk = _settings.PushToTalkKey;
-        bool isDown = (GetAsyncKeyState(vk) & 0x8000) != 0;
-
+        bool isDown = (GetAsyncKeyState(_settings.PushToTalkKey) & 0x8000) != 0;
         if (isDown && !_pttWasDown)
         {
             _pttWasDown = true;
@@ -96,7 +132,7 @@ class HotkeyManager : IDisposable
         }
     }
 
-    internal void OnHotKey(int id)
+    private void OnHotKey(int id)
     {
         switch (id)
         {
@@ -122,46 +158,20 @@ class HotkeyManager : IDisposable
                 App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
                 break;
 
-            case 3: // PTT combo key pressed
-                _pttWasDown = true;
-                _engine.EngageGate();
-                App.Instance.UpdateTrayTooltip("WhisperGate - Active");
+            case HOTKEY_PTT:
+                // For non-modifier PTT, RegisterHotKey only fires on press, not release
+                // So we use it as a toggle fallback
+                if (!_pttWasDown)
+                {
+                    _pttWasDown = true;
+                    _engine.EngageGate();
+                    App.Instance.UpdateTrayTooltip("WhisperGate - Active");
+                }
                 break;
         }
     }
 
     private static bool IsModifierOnly(int vk) => Array.IndexOf(ModifierVKs, vk) >= 0;
 
-    public void Dispose()
-    {
-        Unregister();
-    }
-
-    private class HotkeyWindow : IDisposable
-    {
-        private readonly HotkeyManager _manager;
-        private readonly System.Windows.Forms.NativeWindow _nativeWindow;
-
-        public IntPtr Handle => _nativeWindow.Handle;
-
-        public HotkeyWindow(HotkeyManager manager)
-        {
-            _manager = manager;
-            _nativeWindow = new InnerWindow(manager);
-            _nativeWindow.CreateHandle(new System.Windows.Forms.CreateParams());
-        }
-
-        public void Dispose() => _nativeWindow.DestroyHandle();
-
-        private class InnerWindow : System.Windows.Forms.NativeWindow
-        {
-            private readonly HotkeyManager _manager;
-            public InnerWindow(HotkeyManager m) => _manager = m;
-            protected override void WndProc(ref System.Windows.Forms.Message m)
-            {
-                if (m.Msg == WM_HOTKEY) _manager.OnHotKey(m.WParam.ToInt32());
-                base.WndProc(ref m);
-            }
-        }
-    }
+    public void Dispose() => Unregister();
 }

@@ -67,8 +67,6 @@ public class HotkeyManager : IDisposable
         using var curModule = curProcess.MainModule!;
         _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, GetModuleHandle(curModule.ModuleName), 0);
 
-        if (_hookId == IntPtr.Zero)
-        else
     }
 
     public void Unregister()

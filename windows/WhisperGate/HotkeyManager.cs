@@ -68,9 +68,7 @@ public class HotkeyManager : IDisposable
         _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, GetModuleHandle(curModule.ModuleName), 0);
 
         if (_hookId == IntPtr.Zero)
-            App.Log($"SetWindowsHookEx FAILED: error {Marshal.GetLastWin32Error()}");
         else
-            App.Log($"Keyboard hook installed: {_hookId}");
     }
 
     public void Unregister()
@@ -95,11 +93,10 @@ public class HotkeyManager : IDisposable
             // Escape cancels
             if (vk == 0x1B && isDown)
             {
-                App.Log("Escape pressed");
                 _isRecordingToggled = false;
                 _pttWasDown = false;
                 _engine.DisengageGate();
-                App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+                App.Instance.UpdateTrayState(false, true);
             }
 
             // PTT (e.g. Right Control = 0xA3)
@@ -108,18 +105,16 @@ public class HotkeyManager : IDisposable
                 if (isDown && !_pttWasDown)
                 {
                     _pttWasDown = true;
-                    App.Log($"PTT DOWN (vk=0x{vk:X})");
                     _engine.EngageGate();
-                    App.Instance.UpdateTrayTooltip("WhisperGate - Active");
+                    App.Instance.UpdateTrayState(true, true);
                 }
                 else if (isUp && _pttWasDown)
                 {
                     _pttWasDown = false;
-                    App.Log("PTT UP");
                     if (!_isRecordingToggled)
                     {
                         _engine.DisengageGate();
-                        App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+                        App.Instance.UpdateTrayState(false, true);
                     }
                 }
             }
@@ -141,17 +136,16 @@ public class HotkeyManager : IDisposable
                 {
                     _recWasDown = true;
                     _isRecordingToggled = !_isRecordingToggled;
-                    App.Log($"Toggle Recording: {(_isRecordingToggled ? "ON" : "OFF")}");
                     if (_isRecordingToggled)
                     {
                         _engine.EngageGate();
-                        App.Instance.UpdateTrayTooltip("WhisperGate - Active");
+                        App.Instance.UpdateTrayState(true, true);
                     }
                     else
                     {
                         _engine.DisengageGate();
                         _pttWasDown = false;
-                        App.Instance.UpdateTrayTooltip("WhisperGate - Standby");
+                        App.Instance.UpdateTrayState(false, true);
                     }
                 }
             }

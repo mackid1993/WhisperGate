@@ -34,6 +34,14 @@ public partial class App : Application
         Hotkeys.Register();
         Log("Hotkey polling started");
 
+        // Tray icon state timer (updates icon color based on gate state)
+        var iconTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        iconTimer.Tick += (_, _) => UpdateTrayState(Engine.IsEngaged, Engine.IsGateOpen);
+        iconTimer.Start();
+
         // System tray
         Icon? trayIcon = null;
         try
@@ -90,24 +98,52 @@ public partial class App : Application
         MainWindow.Activate();
     }
 
-    public void UpdateTrayTooltip(string text)
+    private Icon? _iconStandby;
+    private Icon? _iconActive;
+    private Icon? _iconGating;
+
+    public void UpdateTrayState(bool engaged, bool gateOpen)
     {
-        if (_trayIcon != null)
-            _trayIcon.ToolTipText = text;
+        if (_trayIcon == null) return;
+
+        if (engaged && gateOpen)
+        {
+            _trayIcon.ToolTipText = "WhisperGate - Active";
+            _trayIcon.Icon = _iconActive ??= MakeTrayIcon(System.Drawing.Color.FromArgb(108, 203, 95)); // green
+        }
+        else if (engaged)
+        {
+            _trayIcon.ToolTipText = "WhisperGate - Noise Reduced";
+            _trayIcon.Icon = _iconGating ??= MakeTrayIcon(System.Drawing.Color.FromArgb(252, 185, 56)); // amber
+        }
+        else
+        {
+            _trayIcon.ToolTipText = "WhisperGate - Standby";
+            _trayIcon.Icon = _iconStandby ??= MakeTrayIcon(System.Drawing.Color.FromArgb(150, 150, 150)); // gray
+        }
     }
 
-    private static readonly string LogPath = System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "WhisperGate", "debug.log");
-
-    public static void Log(string msg)
+    private static Icon MakeTrayIcon(System.Drawing.Color color)
     {
-        try
-        {
-            var dir = System.IO.Path.GetDirectoryName(LogPath)!;
-            if (!System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
-            System.IO.File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
-        }
-        catch { }
+        var bmp = new System.Drawing.Bitmap(16, 16);
+        using var g = System.Drawing.Graphics.FromImage(bmp);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.Clear(System.Drawing.Color.Transparent);
+
+        using var brush = new System.Drawing.SolidBrush(color);
+        using var pen = new System.Drawing.Pen(color, 1.5f);
+
+        // Mic body
+        g.FillEllipse(brush, 5, 2, 6, 8);
+
+        // Mic arc
+        g.DrawArc(pen, 3, 4, 10, 10, 0, 180);
+
+        // Stand
+        g.DrawLine(pen, 8, 14, 8, 12);
+        g.DrawLine(pen, 5, 14, 11, 14);
+
+        var handle = bmp.GetHicon();
+        return Icon.FromHandle(handle);
     }
 }

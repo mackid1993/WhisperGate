@@ -110,7 +110,7 @@ windows/
 ### Known Limitations
 - Gate cannot remove noise underneath speech (only during pauses)
 - Hold time creates a brief window where background noise can leak after speech stops
-- Whisper models hallucinate on near-silent audio — very low gated volume may cause gibberish transcription
+- Speech-to-text models (e.g. Parakeet) hallucinate on near-silent audio — very low gated volume may cause gibberish transcription
 - Mac built-in mic is very sensitive — may need lower gated volume than Windows
 - Windows settings.json caches VK codes — delete it if sync doesn't pick up new shortcuts
 

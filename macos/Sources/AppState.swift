@@ -53,19 +53,22 @@ final class AppState {
     // Runtime setup state (checked every launch based on actual permissions)
     var needsSetup: Bool = false
 
+    private var didFinishInit = false
+
     // Persisted
-    var isEnabled: Bool = true { didSet { save("isEnabled", isEnabled) } }
-    var threshold: Float = -12 { didSet { save("threshold", threshold) } }
-    var holdTimeMs: Double = 400 { didSet { save("holdTimeMs", holdTimeMs) } }
+    var isEnabled: Bool = true { didSet { guard didFinishInit else { return }; save("isEnabled", isEnabled) } }
+    var threshold: Float = -12 { didSet { guard didFinishInit else { return }; save("threshold", threshold) } }
+    var holdTimeMs: Double = 400 { didSet { guard didFinishInit else { return }; save("holdTimeMs", holdTimeMs) } }
     var inputDeviceUID: String? {
         didSet {
+            guard didFinishInit else { return }
             if let v = inputDeviceUID { UserDefaults.standard.set(v, forKey: "inputDeviceUID") }
             else { UserDefaults.standard.removeObject(forKey: "inputDeviceUID") }
         }
     }
-    var pushToTalkShortcut: KeyCombo? { didSet { saveCombo(pushToTalkShortcut, "ptt") } }
-    var recordingShortcut: KeyCombo? { didSet { saveCombo(recordingShortcut, "rec") } }
-    var startAtLogin: Bool = false { didSet { save("startAtLogin", startAtLogin); LoginItemManager.setEnabled(startAtLogin) } }
+    var pushToTalkShortcut: KeyCombo? { didSet { guard didFinishInit else { return }; saveCombo(pushToTalkShortcut, "ptt") } }
+    var recordingShortcut: KeyCombo? { didSet { guard didFinishInit else { return }; saveCombo(recordingShortcut, "rec") } }
+    var startAtLogin: Bool = false { didSet { guard didFinishInit else { return }; save("startAtLogin", startAtLogin); LoginItemManager.setEnabled(startAtLogin) } }
     // Runtime
     var isGateEngaged: Bool = false
     var isGateOpen: Bool = true
@@ -110,6 +113,7 @@ final class AppState {
         pushToTalkShortcut = loadCombo("ptt")
         recordingShortcut = loadCombo("rec")
         startAtLogin = d.bool(forKey: "startAtLogin")
+        didFinishInit = true
     }
 
     func setup() {

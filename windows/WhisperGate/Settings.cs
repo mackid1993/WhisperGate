@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using System.Windows.Forms;
 
 namespace WhisperGate;
 
@@ -11,14 +10,12 @@ class Settings
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "WhisperGate", "settings.json");
 
-    public Keys PushToTalkKey { get; set; } = Keys.None;
-    public Keys PushToTalkModifiers { get; set; } = Keys.None;
-    public Keys ToggleRecordingKey { get; set; } = Keys.None;
-    public Keys ToggleRecordingModifiers { get; set; } = Keys.None;
+    public int PushToTalkKey { get; set; }
+    public int PushToTalkModifiers { get; set; }
+    public int ToggleRecordingKey { get; set; }
+    public int ToggleRecordingModifiers { get; set; }
     public float Threshold { get; set; } = -40f;
-    public bool StartAtLogin { get; set; } = false;
-
-    // Display strings for UI
+    public bool StartAtLogin { get; set; }
     public string PushToTalkDisplay { get; set; } = "Not Set";
     public string ToggleRecordingDisplay { get; set; } = "Not Set";
 
@@ -26,18 +23,13 @@ class Settings
     {
         var dir = Path.GetDirectoryName(SettingsPath)!;
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(SettingsPath, json);
+        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     public static Settings Load()
     {
         if (!File.Exists(SettingsPath)) return new Settings();
-        try
-        {
-            var json = File.ReadAllText(SettingsPath);
-            return JsonSerializer.Deserialize<Settings>(json) ?? new Settings();
-        }
+        try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(SettingsPath)) ?? new Settings(); }
         catch { return new Settings(); }
     }
 }

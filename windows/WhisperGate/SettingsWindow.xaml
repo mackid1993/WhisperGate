@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="WhisperGate.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="WhisperGate Settings"
+    Width="460" Height="500">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="24">
+        <ScrollViewer>
+            <StackPanel Spacing="20">
+
+                <!-- Header -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="WhisperGate" FontSize="24" FontWeight="Bold"/>
+                    <TextBlock Text="Noise gate for superwhisper" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+
+                <!-- Status -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        CornerRadius="8" Padding="16">
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Name="StatusText" Text="Standby" FontWeight="SemiBold" FontSize="16"/>
+                        <TextBlock x:Name="StatusDetail" Text="Waiting for superwhisper hotkey"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <ProgressBar x:Name="LevelBar" Minimum="0" Maximum="100" Value="0" Height="6"
+                                     CornerRadius="3"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Shortcuts -->
+                <StackPanel Spacing="8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="superwhisper Shortcuts" FontWeight="SemiBold" FontSize="14"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="Sync" Click="OnSync"/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Push to Talk" VerticalAlignment="Center"/>
+                        <Border Grid.Column="1" Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="4" Padding="8,4">
+                            <TextBlock x:Name="PttText" Text="Not Set" FontFamily="Consolas"
+                                       Foreground="White" FontSize="12"/>
+                        </Border>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Toggle Recording" VerticalAlignment="Center"/>
+                        <Border Grid.Column="1" Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="4" Padding="8,4">
+                            <TextBlock x:Name="RecText" Text="Not Set" FontFamily="Consolas"
+                                       Foreground="White" FontSize="12"/>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Threshold -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Noise Gate" FontWeight="SemiBold" FontSize="14"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Threshold" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="ThresholdValue" Grid.Column="1" Text="-40 dB"
+                                   FontFamily="Consolas"/>
+                    </Grid>
+                    <Slider x:Name="ThresholdSlider" Minimum="-60" Maximum="-20"
+                            Value="-40" StepFrequency="1"
+                            ValueChanged="OnThresholdChanged"/>
+                    <TextBlock Text="Set just above your room noise level. Lower = less filtering, higher = more filtering."
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <!-- Settings -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Settings" FontWeight="SemiBold" FontSize="14"/>
+                    <ToggleSwitch x:Name="StartAtLoginToggle" Header="Start at Login"
+                                  Toggled="OnStartAtLoginChanged"/>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

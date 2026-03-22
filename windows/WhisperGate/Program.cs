@@ -1,18 +1,20 @@
 using System;
-using System.Windows.Forms;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 
 namespace WhisperGate;
 
 static class Program
 {
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-
-        using var app = new TrayApp();
-        Application.Run();
+        WinRT.ComWrappersSupport.InitializeComWrappers();
+        Application.Start(p =>
+        {
+            var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+            System.Threading.SynchronizationContext.SetSynchronizationContext(context);
+            _ = new App();
+        });
     }
 }

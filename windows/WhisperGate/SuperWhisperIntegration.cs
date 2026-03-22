@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using System.Windows.Forms;
 
 namespace WhisperGate;
 
@@ -16,11 +15,9 @@ static class SuperWhisperIntegration
     public static void SyncShortcuts(Settings settings)
     {
         if (!IsInstalled()) return;
-
         try
         {
-            var json = File.ReadAllText(PrefsPath);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(File.ReadAllText(PrefsPath));
             var root = doc.RootElement;
 
             if (root.TryGetProperty("pushToTalkShortcut", out var ptt))
@@ -28,8 +25,8 @@ static class SuperWhisperIntegration
                 var str = ptt.GetString();
                 if (!string.IsNullOrEmpty(str))
                 {
-                    var (key, mods) = ParseShortcut(str);
-                    settings.PushToTalkKey = key;
+                    var (vk, mods) = ParseShortcut(str);
+                    settings.PushToTalkKey = vk;
                     settings.PushToTalkModifiers = mods;
                     settings.PushToTalkDisplay = str;
                 }
@@ -40,57 +37,59 @@ static class SuperWhisperIntegration
                 var str = rec.GetString();
                 if (!string.IsNullOrEmpty(str))
                 {
-                    var (key, mods) = ParseShortcut(str);
-                    settings.ToggleRecordingKey = key;
+                    var (vk, mods) = ParseShortcut(str);
+                    settings.ToggleRecordingKey = vk;
                     settings.ToggleRecordingModifiers = mods;
                     settings.ToggleRecordingDisplay = str;
                 }
             }
+
+            settings.Save();
         }
         catch { }
     }
 
-    /// Parse superwhisper shortcut strings like "Control+Shift+Tab" or "ControlRight"
-    private static (Keys key, Keys modifiers) ParseShortcut(string shortcut)
+    // Virtual key codes
+    private const int VK_TAB = 0x09, VK_RETURN = 0x0D, VK_ESCAPE = 0x1B, VK_SPACE = 0x20;
+    private const int VK_BACK = 0x08, VK_DELETE = 0x2E;
+    private const int VK_LCONTROL = 0xA2, VK_RCONTROL = 0xA3;
+    private const int VK_LSHIFT = 0xA0, VK_RSHIFT = 0xA1;
+    private const int VK_LMENU = 0xA4, VK_RMENU = 0xA5;
+    private const int VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+    private const int MOD_ALT = 0x0001, MOD_CONTROL = 0x0002, MOD_SHIFT = 0x0004;
+
+    private static (int vk, int mods) ParseShortcut(string shortcut)
     {
         var parts = shortcut.Split('+');
-        Keys key = Keys.None;
-        Keys mods = Keys.None;
+        int vk = 0, mods = 0;
 
         foreach (var part in parts)
         {
             var p = part.Trim();
             switch (p)
             {
-                // Modifiers
-                case "Control": case "ControlLeft": mods |= Keys.Control; break;
-                case "ControlRight": key = Keys.RControlKey; mods |= Keys.Control; break;
-                case "Shift": case "ShiftLeft": mods |= Keys.Shift; break;
-                case "ShiftRight": key = Keys.RShiftKey; mods |= Keys.Shift; break;
-                case "Alt": case "AltLeft": mods |= Keys.Alt; break;
-                case "AltRight": key = Keys.RMenu; mods |= Keys.Alt; break;
-                case "Meta": case "MetaLeft": case "MetaRight": mods |= Keys.LWin; break;
-
-                // Common keys
-                case "Tab": key = Keys.Tab; break;
-                case "Space": key = Keys.Space; break;
-                case "Escape": key = Keys.Escape; break;
-                case "Enter": key = Keys.Enter; break;
-                case "Backspace": key = Keys.Back; break;
-                case "Delete": key = Keys.Delete; break;
-
-                // Letters
+                case "Control": case "ControlLeft": mods |= MOD_CONTROL; break;
+                case "ControlRight": vk = VK_RCONTROL; mods |= MOD_CONTROL; break;
+                case "Shift": case "ShiftLeft": mods |= MOD_SHIFT; break;
+                case "ShiftRight": vk = VK_RSHIFT; mods |= MOD_SHIFT; break;
+                case "Alt": case "AltLeft": mods |= MOD_ALT; break;
+                case "AltRight": vk = VK_RMENU; mods |= MOD_ALT; break;
+                case "Meta": case "MetaLeft": vk = VK_LWIN; break;
+                case "MetaRight": vk = VK_RWIN; break;
+                case "Tab": vk = VK_TAB; break;
+                case "Space": vk = VK_SPACE; break;
+                case "Escape": vk = VK_ESCAPE; break;
+                case "Enter": vk = VK_RETURN; break;
+                case "Backspace": vk = VK_BACK; break;
+                case "Delete": vk = VK_DELETE; break;
                 default:
                     if (p.StartsWith("Key") && p.Length == 4)
-                        key = (Keys)Enum.Parse(typeof(Keys), p[3..]);
+                        vk = char.ToUpper(p[3]);
                     else if (p.Length == 1 && char.IsLetter(p[0]))
-                        key = (Keys)Enum.Parse(typeof(Keys), p.ToUpper());
-                    else if (Enum.TryParse<Keys>(p, true, out var k))
-                        key = k;
+                        vk = char.ToUpper(p[0]);
                     break;
             }
         }
-
-        return (key, mods);
+        return (vk, mods);
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace WhisperGate;
@@ -19,7 +20,8 @@ public partial class SettingsWindow : Window
         _uiTimer.Tick += (_, _) => UpdateStatus();
         _uiTimer.Start();
 
-        Closing += (_, e) => { e.Cancel = true; Hide(); };
+        Closing += (_, e) => { e.Cancel = true; Hide(); _uiTimer.Stop(); };
+        IsVisibleChanged += (_, e) => { if ((bool)e.NewValue) _uiTimer.Start(); };
     }
 
     private void RefreshDisplay()
@@ -36,15 +38,27 @@ public partial class SettingsWindow : Window
         var engine = App.Instance.Engine;
         if (engine.IsEngaged)
         {
-            StatusText.Text = engine.IsGateOpen ? "Full Volume" : "Noise Reduced";
-            StatusDetail.Text = engine.IsGateOpen ? "Your voice is passing through" : "Mic level reduced — filtering noise";
-            LevelBar.Value = Math.Max(0, Math.Min(100, (engine.LatestDB + 80) / 80 * 100));
+            if (engine.IsGateOpen)
+            {
+                StatusText.Text = "Full Volume";
+                StatusDetail.Text = "Your voice is passing through";
+                StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6C, 0xCB, 0x5F)); // green
+            }
+            else
+            {
+                StatusText.Text = "Noise Reduced";
+                StatusDetail.Text = "Mic level reduced — filtering noise";
+                StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x38)); // amber
+            }
+            var norm = Math.Max(0, Math.Min(1, (engine.LatestDB + 80) / 80));
+            LevelFill.Width = norm * (ActualWidth - 90);
         }
         else
         {
             StatusText.Text = "Standby";
             StatusDetail.Text = "Waiting for superwhisper hotkey";
-            LevelBar.Value = 0;
+            StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E)); // gray
+            LevelFill.Width = 0;
         }
     }
 

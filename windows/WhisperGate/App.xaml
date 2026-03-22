@@ -5,14 +5,65 @@
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
-            <Color x:Key="BgColor">#1E1E2E</Color>
-            <Color x:Key="CardColor">#2A2A3C</Color>
-            <Color x:Key="AccentColor">#5B9BD5</Color>
+            <!-- Fluent-style dark theme colors -->
+            <Color x:Key="BgColor">#202020</Color>
+            <Color x:Key="CardColor">#2D2D2D</Color>
+            <Color x:Key="CardHoverColor">#383838</Color>
+            <Color x:Key="AccentColor">#60CDFF</Color>
+            <Color x:Key="AccentDimColor">#3060CDFF</Color>
+            <Color x:Key="BorderColor">#404040</Color>
+            <Color x:Key="FgColor">#FFFFFF</Color>
+            <Color x:Key="FgSecondary">#9E9E9E</Color>
+            <Color x:Key="FgTertiary">#6E6E6E</Color>
+            <Color x:Key="SuccessColor">#6CCB5F</Color>
+            <Color x:Key="WarningColor">#FCB938</Color>
+
             <SolidColorBrush x:Key="BgBrush" Color="{StaticResource BgColor}"/>
             <SolidColorBrush x:Key="CardBrush" Color="{StaticResource CardColor}"/>
+            <SolidColorBrush x:Key="CardHoverBrush" Color="{StaticResource CardHoverColor}"/>
             <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
-            <SolidColorBrush x:Key="FgBrush" Color="White"/>
-            <SolidColorBrush x:Key="FgDimBrush" Color="#99FFFFFF"/>
+            <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+            <SolidColorBrush x:Key="FgBrush" Color="{StaticResource FgColor}"/>
+            <SolidColorBrush x:Key="FgSecondaryBrush" Color="{StaticResource FgSecondary}"/>
+            <SolidColorBrush x:Key="FgTertiaryBrush" Color="{StaticResource FgTertiary}"/>
+            <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+
+            <!-- Fluent Button Style -->
+            <Style x:Key="FluentButton" TargetType="Button">
+                <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource FgBrush}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="16,6"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource CardHoverBrush}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Accent Button Style -->
+            <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource FluentButton}">
+                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                <Setter Property="Foreground" Value="#000000"/>
+                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+            </Style>
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>

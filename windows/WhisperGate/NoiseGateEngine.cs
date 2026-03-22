@@ -102,7 +102,7 @@ public class NoiseGateEngine
 
     private void SetVolume(float volume)
     {
-        try { _device?.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f); }
+        try { if (_device != null) _device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f); }
         catch { }
     }
 }

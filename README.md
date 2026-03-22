@@ -1,6 +1,6 @@
 # WhisperGate
 
-A lightweight macOS menu bar app that acts as a noise gate for [superwhisper](https://superwhisper.com) dictation. Filters out background noise (TV, music, conversations) so only your voice gets transcribed.
+A lightweight noise gate for [superwhisper](https://superwhisper.com) dictation. Filters out background noise (TV, music, conversations) so only your voice gets transcribed. Available for macOS and Windows.
 
 ## How It Works
 
@@ -19,14 +19,20 @@ No virtual audio devices. No complex routing. Just smart mic volume control time
 - Simple threshold slider — set it just above your background noise level
 - Gentle volume reduction when gating (30% / ~10dB) — no harsh audio artifacts
 - Escape key cancels dictation (matches superwhisper behavior)
-- Zero permissions needed for hotkey detection (uses Carbon RegisterEventHotKey + CGEventSource polling)
-- Only requires Microphone permission
 - Near-zero CPU when idle — mic only active during dictation
-- Universal binary (Apple Silicon + Intel)
+- System tray icon changes color to show gate state (standby / active / gating)
+- Start at login option
 
-## Building
+---
 
-Requires only Xcode Command Line Tools. No Xcode project, no third-party dependencies.
+## macOS
+
+### Requirements
+
+- macOS 14 (Sonoma) or later
+- Xcode Command Line Tools
+
+### Building
 
 ```bash
 # Install command line tools (if not already installed)
@@ -40,81 +46,87 @@ cd macos
 open build/WhisperGate.app
 ```
 
-The build script compiles a universal binary (arm64 + x86_64), generates the app icon, and signs it ad-hoc. That's it.
+The build script compiles a universal binary (Apple Silicon + Intel), generates the app icon, and signs it ad-hoc.
 
-## Setup
+### Setup
 
-On first launch, WhisperGate will:
+On first launch, WhisperGate will ask for **Microphone** permission and show your synced superwhisper shortcuts.
 
-1. Ask for **Microphone** permission — needed to monitor audio levels
-2. Show your synced **superwhisper shortcuts** — detected automatically from superwhisper's preferences
+### macOS Tip: Enable Voice Isolation
 
-### Setting the Threshold
+For the best results, enable macOS Voice Isolation:
 
-Use the threshold slider in the popover to control how aggressive the gate is:
+1. Open **System Settings > Sound**
+2. Under **Microphone Mode**, select **Voice Isolation**
+
+Voice Isolation uses Apple's neural engine to separate your voice from background noise at the hardware level. Combined with WhisperGate, this gives extremely clean dictation even in noisy environments. Available on Macs with Apple Silicon (M1 or later).
+
+---
+
+## Windows
+
+### Requirements
+
+- Windows 10 (build 19041) or later
+- [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) (download the SDK installer for your architecture)
+
+### Building
+
+```cmd
+cd windows
+build.bat
+```
+
+The build script compiles a self-contained exe with all dependencies included. The output is in `windows\build\WhisperGate.exe`.
+
+### Setup
+
+WhisperGate launches silently to the system tray. Double-click the tray icon or right-click and select **Settings** to open the settings window.
+
+Shortcuts are automatically synced from superwhisper's preferences at `%APPDATA%\com.superwhisper.app\preferences.json`. Click **Sync** in the settings window if you change your superwhisper shortcuts.
+
+---
+
+## Setting the Threshold
+
+Use the threshold slider to control how aggressive the gate is:
 
 - **Lower values** (toward -60 dB): less filtering, gate opens more easily
 - **Higher values** (toward -20 dB): more filtering, only louder speech opens the gate
 
-Set it just above your background noise level. If you have a TV on, slide it higher. In a quiet room, slide it lower. The gate reduces mic volume to 30% when you're not speaking — gentle enough to sound natural, strong enough to suppress background noise from being transcribed.
-
-## Recommended: Enable Voice Isolation
-
-For the best results with superwhisper, enable macOS Voice Isolation:
-
-1. Open **System Settings > Sound**
-2. Under **Microphone Mode**, select **Voice Isolation**
-3. In superwhisper, make sure your input device is set to your Mac's built-in microphone
-
-Voice Isolation uses Apple's neural engine to separate your voice from background noise at the hardware level. Combined with WhisperGate's volume gating, this gives you extremely clean dictation even in noisy environments.
-
-Note: Voice Isolation is available on Macs with Apple Silicon (M1 or later).
+Set it just above your background noise level. If you have a TV on, slide it higher. In a quiet room, slide it lower.
 
 ## How the Gate Works
 
 ```
-Hotkey pressed → mic volume reduced to 30%
-    ↓
-Your voice detected (above threshold) → mic restored to full volume
-    ↓
-You stop speaking (300ms hold) → mic volume reduced to 30% again
-    ↓
-Hotkey released or Escape pressed → mic fully restored to normal
+Hotkey pressed -> mic volume reduced to 30%
+       |
+Your voice detected (above threshold) -> mic restored to full volume
+       |
+You stop speaking (300ms hold) -> mic volume reduced to 30% again
+       |
+Hotkey released or Escape pressed -> mic fully restored to normal
 ```
 
 - **Threshold**: user-adjustable, -60 to -20 dB
 - **Reduction**: fixed 30% volume (~10 dB drop) — gentle, no choppy artifacts
 - **Hold time**: 300ms — keeps gate open during natural pauses between words
-- **Detection**: energy-based (RMS level via vDSP), continuously monitored via AudioQueue
+- **Detection**: energy-based (RMS level), continuously monitored
 - **No muting/unmuting cycles**: just two volume levels (full and reduced)
 
 ## Project Structure
 
 ```
 macos/
-  Sources/
-    WhisperGateApp.swift          — App entry, MenuBarExtra
-    AppState.swift                — State management, UserDefaults
-    NoiseGateEngine.swift         — AudioQueue capture, gate logic, volume control
-    HotkeyMonitor.swift           — Carbon hotkeys + modifier polling
-    AudioDeviceManager.swift      — CoreAudio device enumeration
-    PopoverView.swift             — Menu bar popover UI
-    SetupView.swift               — First-launch setup window
-    CalibrateButton.swift         — Threshold calibration helper
-    SuperWhisperIntegration.swift — Reads superwhisper preferences
-    VoiceProfile.swift            — Voice profile types
-    LoginItemManager.swift        — Start at login
-  Resources/
-    Info.plist
-    WhisperGate.entitlements
-  build.sh                        — Build script
-  generate_icon.sh                — Icon generator
+  Sources/           — Swift source files
+  Resources/         — Info.plist, entitlements
+  build.sh           — Build script (requires Xcode CLI tools)
+  generate_icon.sh   — App icon generator
+
+windows/
+  WhisperGate/       — C# / WPF source files
+  build.bat          — Build script (requires .NET 8 SDK)
 ```
-
-## Platforms
-
-- **macOS** (14+) — available now
-- **Windows** — planned (WinUI3 + system tray)
 
 ## Disclaimer
 

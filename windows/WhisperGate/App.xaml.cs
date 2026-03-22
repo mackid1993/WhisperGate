@@ -57,15 +57,7 @@ public partial class App : Application
         var menu = new System.Windows.Controls.ContextMenu();
         var settingsItem = new System.Windows.Controls.MenuItem { Header = "Settings..." };
         settingsItem.Click += (_, _) => ShowSettings();
-        var syncItem = new System.Windows.Controls.MenuItem { Header = "Sync from superwhisper" };
-        syncItem.Click += (_, _) =>
-        {
-            SuperWhisperIntegration.SyncShortcuts(AppSettings);
-            AppSettings.Save();
-            Hotkeys.Unregister();
-            Hotkeys.Register();
-        };
-        var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit WhisperGate" };
+        var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit" };
         quitItem.Click += (_, _) =>
         {
             Engine.DisengageGate();
@@ -73,8 +65,6 @@ public partial class App : Application
             Shutdown();
         };
         menu.Items.Add(settingsItem);
-        menu.Items.Add(new System.Windows.Controls.Separator());
-        menu.Items.Add(syncItem);
         menu.Items.Add(new System.Windows.Controls.Separator());
         menu.Items.Add(quitItem);
         _trayIcon.ContextMenu = menu;

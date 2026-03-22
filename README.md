@@ -106,6 +106,44 @@ Controls how much the mic volume is reduced when you're not speaking.
 
 If background noise still leaks through, lower this value.
 
+---
+
+## Installing Pre-built Binaries
+
+### macOS — Gatekeeper Warning
+
+Since WhisperGate is not signed with an Apple Developer certificate, macOS will show a warning when you first try to open it.
+
+1. Download `WhisperGate-macOS.zip` and unzip it
+2. Move `WhisperGate.app` to your Applications folder
+3. Double-click to open — macOS will say it "can't be opened because Apple cannot check it for malicious software"
+4. Open **System Settings > Privacy & Security**
+5. Scroll down — you'll see a message about WhisperGate being blocked
+6. Click **Open Anyway**
+7. macOS will ask one more time — click **Open**
+
+You only need to do this once. After that, WhisperGate will open normally.
+
+Alternatively, you can bypass Gatekeeper from Terminal:
+```bash
+xattr -cr /Applications/WhisperGate.app
+```
+
+### Windows — SmartScreen Warning
+
+Since WhisperGate is not signed with a code signing certificate, Windows SmartScreen will show a warning when you first run it.
+
+1. Download `WhisperGate-Windows.zip` and unzip it
+2. Double-click `WhisperGate.exe` — Windows will show "Windows protected your PC"
+3. Click **More info**
+4. Click **Run anyway**
+
+You only need to do this once. After that, Windows will remember your choice.
+
+If you prefer, you can right-click the exe > **Properties** > check **Unblock** > **OK** before running.
+
+---
+
 ## Disclaimer
 
 WhisperGate is an independent, open-source project. It is not affiliated with, endorsed by, or sponsored by [superwhisper](https://superwhisper.com) or SuperUltra, Inc. "superwhisper" is a trademark of SuperUltra, Inc. All trademarks belong to their respective owners.

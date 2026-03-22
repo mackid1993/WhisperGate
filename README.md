@@ -8,16 +8,16 @@ WhisperGate syncs your superwhisper hotkeys and activates automatically when you
 
 1. **Press your superwhisper hotkey** — WhisperGate reduces your mic level to filter background noise
 2. **Start speaking** — your voice is detected and mic restores to full volume instantly
-3. **Stop speaking** — mic level drops again within milliseconds, silencing background noise
-4. **Release the hotkey** — mic returns to normal
+3. **Stop speaking** — mic level drops again after a brief hold, silencing background noise
+4. **Release the hotkey (or press Escape)** — mic returns to normal
 
 No virtual audio devices. No complex routing. Just smart mic volume control timed to your speech.
 
 ## Features
 
 - Syncs hotkeys directly from superwhisper preferences (Push to Talk + Toggle Recording)
-- Two-step calibration wizard: measures your room noise, then your voice, auto-sets the threshold
-- Hardware mute + volume reduction for maximum noise suppression
+- Simple threshold slider — set it just above your background noise level
+- Gentle volume reduction when gating (30% / ~10dB) — no harsh audio artifacts
 - Escape key cancels dictation (matches superwhisper behavior)
 - Zero permissions needed for hotkey detection (uses Carbon RegisterEventHotKey + CGEventSource polling)
 - Only requires Microphone permission
@@ -48,16 +48,15 @@ On first launch, WhisperGate will:
 
 1. Ask for **Microphone** permission — needed to monitor audio levels
 2. Show your synced **superwhisper shortcuts** — detected automatically from superwhisper's preferences
-3. Walk you through **calibration** — measures your room noise and voice to set the optimal threshold
 
-### Calibration
+### Setting the Threshold
 
-Click **Calibrate** in the popover:
+Use the threshold slider in the popover to control how aggressive the gate is:
 
-1. **Step 1**: Let your background noise play (TV, fan, etc). Don't speak. Click "Done" when ready.
-2. **Step 2**: Keep the noise playing. Speak at your normal dictation volume over it. Click "Done" when ready.
+- **Lower values** (toward -60 dB): less filtering, gate opens more easily
+- **Higher values** (toward -20 dB): more filtering, only louder speech opens the gate
 
-WhisperGate sets the threshold just above your noise level so only your voice opens the gate. You can also adjust the threshold slider manually.
+Set it just above your background noise level. If you have a TV on, slide it higher. In a quiet room, slide it lower. The gate reduces mic volume to 30% when you're not speaking — gentle enough to sound natural, strong enough to suppress background noise from being transcribed.
 
 ## Recommended: Enable Voice Isolation
 
@@ -74,22 +73,20 @@ Note: Voice Isolation is available on Macs with Apple Silicon (M1 or later).
 ## How the Gate Works
 
 ```
-Hotkey pressed → mic volume reduced (noise suppressed)
+Hotkey pressed → mic volume reduced to 30%
     ↓
 Your voice detected (above threshold) → mic restored to full volume
     ↓
-You stop speaking (75ms silence) → mic volume reduced again
+You stop speaking (300ms hold) → mic volume reduced to 30% again
     ↓
-Hotkey released → mic fully restored to normal
+Hotkey released or Escape pressed → mic fully restored to normal
 ```
 
-The gate uses energy-based detection with automatic calibration:
-
-- **Noise measurement**: 99th percentile of room noise level
-- **Threshold**: noise level + 15 dB (aggressive, catches loud TV)
-- **Reduction target**: pushes noise down to -65 dB (below transcription threshold)
-- **Hold time**: 75ms (prevents clipping between words)
-- **No muting/unmuting cycles**: just two volume levels (full and reduced), continuously monitored
+- **Threshold**: user-adjustable, -60 to -20 dB
+- **Reduction**: fixed 30% volume (~10 dB drop) — gentle, no choppy artifacts
+- **Hold time**: 300ms — keeps gate open during natural pauses between words
+- **Detection**: energy-based (RMS level via vDSP), continuously monitored via AudioQueue
+- **No muting/unmuting cycles**: just two volume levels (full and reduced)
 
 ## Project Structure
 
@@ -103,9 +100,9 @@ macos/
     AudioDeviceManager.swift      — CoreAudio device enumeration
     PopoverView.swift             — Menu bar popover UI
     SetupView.swift               — First-launch setup window
-    CalibrateButton.swift         — Calibration wizard
+    CalibrateButton.swift         — Threshold calibration helper
     SuperWhisperIntegration.swift — Reads superwhisper preferences
-    VoiceProfile.swift            — Voice profile types (for future use)
+    VoiceProfile.swift            — Voice profile types
     LoginItemManager.swift        — Start at login
   Resources/
     Info.plist

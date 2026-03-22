@@ -6,7 +6,7 @@
     <UseWinUI>true</UseWinUI>
     <UseWindowsForms>true</UseWindowsForms>
     <WindowsPackageType>None</WindowsPackageType>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <ApplicationIcon Condition="Exists('icon.ico')">icon.ico</ApplicationIcon>
     <AssemblyName>WhisperGate</AssemblyName>
     <RootNamespace>WhisperGate</RootNamespace>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>

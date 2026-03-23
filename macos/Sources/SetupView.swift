@@ -117,12 +117,15 @@ struct SetupView: View {
             Button(action: {
                 if let ptt { AppState.shared.pushToTalkShortcut = ptt }
                 if let rec { AppState.shared.recordingShortcut = rec }
-                if installDriver {
-                    // Install synchronously — admin dialog blocks anyway
-                    DriverInstaller.install()
-                    AppState.shared.virtualMicEnabled = true
+                let shouldInstall = installDriver
+                let complete = onComplete
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if shouldInstall {
+                        DriverInstaller.install()
+                        DispatchQueue.main.async { AppState.shared.virtualMicEnabled = true }
+                    }
+                    DispatchQueue.main.async { complete() }
                 }
-                onComplete()
             }) {
                 Text("Start WhisperGate")
                     .frame(maxWidth: .infinity)

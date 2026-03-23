@@ -166,16 +166,13 @@ public class NoiseGateEngine
     private void StartExclusiveCapture()
     {
         if (_exclusiveCapture != null || _device == null) return;
-        // Use device's native format and default period for exclusive mode
-        _exclusiveCapture = new WasapiCapture(_device, false);
+        // Exclusive mode requires event sync and the device's native format
+        _exclusiveCapture = new WasapiCapture(_device, true);
         _exclusiveCapture.ShareMode = AudioClientShareMode.Exclusive;
         _exclusiveFormat = _exclusiveCapture.WaveFormat;
         _exclusiveCapture.DataAvailable += (_, e) =>
         {
-            if (_exclusiveFormat != null && _exclusiveFormat.BitsPerSample == 32 &&
-                _exclusiveFormat.Encoding == WaveFormatEncoding.IeeeFloat)
-                OnAudioData(ComputeDBFloat(e.Buffer, e.BytesRecorded));
-            else if (_exclusiveFormat != null && _exclusiveFormat.BitsPerSample == 32)
+            if (_exclusiveFormat != null && _exclusiveFormat.BitsPerSample >= 32)
                 OnAudioData(ComputeDBFloat(e.Buffer, e.BytesRecorded));
             else if (_exclusiveFormat != null && _exclusiveFormat.BitsPerSample == 24)
                 OnAudioData(ComputeDB24(e.Buffer, e.BytesRecorded));

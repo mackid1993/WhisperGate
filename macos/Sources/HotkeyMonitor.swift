@@ -8,6 +8,7 @@ import CoreGraphics
 final class HotkeyMonitor {
     private let state: AppState
     private var hotKeyRefs: [EventHotKeyRef?] = []
+    private var escapeHotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
     private var modifierTimer: Timer?
     private var pttModWasDown = false
@@ -36,12 +37,24 @@ final class HotkeyMonitor {
             )
         }
 
-        // Escape (keyCode 53) always cancels — matches superwhisper behavior
-        registerCarbonHotKey(keyCode: 53, modifiers: 0, id: 3)
+    }
 
+    /// Register the Escape hotkey so it can cancel the active gate.
+    func registerEscape() {
+        guard escapeHotKeyRef == nil else { return }
+        registerCarbonHotKey(keyCode: 53, modifiers: 0, id: 3)
+    }
+
+    /// Unregister the Escape hotkey so it passes through to other apps.
+    func unregisterEscape() {
+        if let ref = escapeHotKeyRef {
+            UnregisterEventHotKey(ref)
+            escapeHotKeyRef = nil
+        }
     }
 
     func stop() {
+        unregisterEscape()
         modifierTimer?.invalidate()
         modifierTimer = nil
         modifierDispatch?.cancel()
@@ -93,8 +106,11 @@ final class HotkeyMonitor {
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID,
                                         GetApplicationEventTarget(), 0, &ref)
         if status == noErr {
-            hotKeyRefs.append(ref)
-        } else {
+            if id == 3 {
+                escapeHotKeyRef = ref
+            } else {
+                hotKeyRefs.append(ref)
+            }
         }
     }
 
@@ -106,10 +122,12 @@ final class HotkeyMonitor {
                 DispatchQueue.main.async {
                     self.state.isRecordingToggled.toggle()
                     if self.state.isRecordingToggled {
+                        self.state.hotkeys?.registerEscape()
                         self.state.engine?.engageGate()
                     } else {
                         self.state.engine?.disengageGate()
                         self.state.isPTTHeld = false
+                        self.state.hotkeys?.unregisterEscape()
                     }
                 }
             }
@@ -118,20 +136,23 @@ final class HotkeyMonitor {
             DispatchQueue.main.async {
                 if pressed && !self.state.isPTTHeld {
                     self.state.isPTTHeld = true
+                    self.state.hotkeys?.registerEscape()
                     self.state.engine?.engageGate()
                 } else if !pressed && self.state.isPTTHeld {
                     self.state.isPTTHeld = false
                     if !self.state.isRecordingToggled {
                         self.state.engine?.disengageGate()
+                        self.state.hotkeys?.unregisterEscape()
                     }
                 }
             }
         } else if id == 3 && pressed {
-            // Escape — cancel everything
+            // Escape — cancel everything and unregister self
             DispatchQueue.main.async {
                 self.state.isPTTHeld = false
                 self.state.isRecordingToggled = false
                 self.state.engine?.disengageGate()
+                self.state.hotkeys?.unregisterEscape()
             }
         }
     }
@@ -175,6 +196,7 @@ final class HotkeyMonitor {
             pttModWasDown = true
             DispatchQueue.main.async {
                 self.state.isPTTHeld = true
+                self.state.hotkeys?.registerEscape()
                 self.state.engine?.engageGate()
             }
         } else if !isDown && pttModWasDown {
@@ -183,6 +205,7 @@ final class HotkeyMonitor {
                 self.state.isPTTHeld = false
                 if !self.state.isRecordingToggled {
                     self.state.engine?.disengageGate()
+                    self.state.hotkeys?.unregisterEscape()
                 }
             }
         }

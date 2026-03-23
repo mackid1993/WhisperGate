@@ -88,8 +88,8 @@ public class HotkeyManager : IDisposable
             bool isDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
             bool isUp = msg == WM_KEYUP || msg == WM_SYSKEYUP;
 
-            // Escape cancels
-            if (vk == 0x1B && isDown)
+            // Escape cancels — only when gate is active
+            if (vk == 0x1B && isDown && (_isRecordingToggled || _pttWasDown))
             {
                 _isRecordingToggled = false;
                 _pttWasDown = false;

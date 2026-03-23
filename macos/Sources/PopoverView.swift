@@ -147,15 +147,17 @@ struct PopoverView: View {
             Text("Set just above your room noise level.")
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
 
-            HStack {
-                Text("Gated Volume").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Text(String(format: "%.0f%%", state.reductionPercent))
-                    .font(.system(.caption, design: .monospaced))
+            if !state.virtualMicEnabled {
+                HStack {
+                    Text("Gated Volume").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(String(format: "%.0f%%", state.reductionPercent))
+                        .font(.system(.caption, design: .monospaced))
+                }
+                Slider(value: $state.reductionPercent, in: 0...100, step: 5)
+                Text("Mic volume when not speaking. 0% = fully silenced. 100% = no reduction.")
+                    .font(.system(size: 9)).foregroundStyle(.tertiary)
             }
-            Slider(value: $state.reductionPercent, in: 0...100, step: 5)
-            Text("Mic volume when not speaking. 0% = fully silenced. 100% = no reduction.")
-                .font(.system(size: 9)).foregroundStyle(.tertiary)
         }
     }
 

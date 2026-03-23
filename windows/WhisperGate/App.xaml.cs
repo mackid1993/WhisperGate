@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows;
+using Microsoft.Win32;
 using Hardcodet.Wpf.TaskbarNotification;
 
 namespace WhisperGate;
@@ -68,6 +69,19 @@ public partial class App : Application
         menu.Items.Add(new System.Windows.Controls.Separator());
         menu.Items.Add(quitItem);
         _trayIcon.ContextMenu = menu;
+
+        // Re-register hotkeys after sleep/hibernate
+        SystemEvents.PowerModeChanged += (_, args) =>
+        {
+            if (args.Mode == PowerModes.Resume)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    Hotkeys.Unregister();
+                    Hotkeys.Register();
+                });
+            }
+        };
 
         // Hide the main window on startup — tray only
         MainWindow?.Hide();

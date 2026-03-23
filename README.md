@@ -4,21 +4,26 @@ A lightweight noise gate for [superwhisper](https://superwhisper.com) dictation.
 
 ## How It Works
 
-1. **Press your superwhisper hotkey** — WhisperGate reduces your mic level to filter background noise
-2. **Start speaking** — your voice is detected and mic restores to full volume instantly
-3. **Stop speaking** — mic level drops again after a brief hold, silencing background noise
+1. **Press your superwhisper hotkey** — WhisperGate activates the noise gate
+2. **Start speaking** — your voice is detected and passes through instantly
+3. **Stop speaking** — the gate closes after a brief hold, silencing background noise
 4. **Release the hotkey (or press Escape)** — mic returns to normal
 
-No virtual audio devices. No complex routing. Just smart mic volume control timed to your speech.
+### Virtual Mic (macOS)
+
+WhisperGate includes an optional virtual audio driver that creates a **"WhisperGate Mic"** input device. When the gate is closed, the virtual mic outputs **true silence** (zero bytes) — completely eliminating STT hallucinations from background noise.
+
+Without the virtual mic, WhisperGate falls back to reducing your system mic volume, which can still leak audio on Mac (volume 0 leaks ~20dB on macOS).
 
 ## Features
 
 - Syncs hotkeys directly from superwhisper preferences (Push to Talk + Toggle Recording)
+- **Virtual Mic Driver** (macOS) — true silence when gated, no hallucinations
 - Threshold slider — set it just above your background noise level
-- Gated Volume slider — control how much to reduce the mic when not speaking (0% = silent, 100% = no reduction)
-- Escape key cancels dictation (matches superwhisper behavior)
+- Gated Volume slider — control mic reduction in volume fallback mode
+- Escape key cancels dictation (only intercepted when gate is active)
 - Near-zero CPU when idle — mic only active during dictation
-- System tray icon changes color to show gate state
+- System tray / menu bar icon shows gate state
 - Start at login option
 
 ---
@@ -57,7 +62,21 @@ Or copy it to your Applications folder:
 cp -R build/WhisperGate.app /Applications/
 ```
 
-On first launch, WhisperGate will ask for **Microphone** permission and show your synced superwhisper shortcuts.
+### First Launch
+
+On first launch, WhisperGate will:
+1. Ask for **Microphone** permission
+2. Show your synced superwhisper shortcuts
+3. Offer to install the **Virtual Mic Driver** (recommended)
+
+### Virtual Mic Setup
+
+When you enable the virtual mic driver:
+- You'll be prompted for your **admin password** (the driver installs to `/Library/Audio/Plug-Ins/HAL/`)
+- Core Audio restarts briefly (may cause a momentary system hang)
+- **"WhisperGate Mic"** appears as an input device
+
+After installation, open superwhisper and select **"WhisperGate Mic"** as your input device. You can add or remove the driver at any time from Settings.
 
 ---
 
@@ -87,6 +106,8 @@ WhisperGate launches silently to the system tray. Double-click the tray icon or 
 
 Shortcuts are automatically synced from superwhisper's preferences. Click **Sync** in settings if you change your superwhisper shortcuts.
 
+> **Note:** On Windows, volume 0 is true silence — no virtual mic driver is needed. The volume-based gate works perfectly.
+
 ---
 
 ## Settings
@@ -98,13 +119,14 @@ Controls how loud audio needs to be to open the gate (let your voice through).
 
 Set it just above your background noise level.
 
-### Gated Volume
-Controls how much the mic volume is reduced when you're not speaking.
+### Gated Volume (volume fallback mode only)
+Controls how much the mic volume is reduced when you're not speaking. Only visible when the virtual mic driver is not installed.
 - **0%**: mic fully silenced when gating (most aggressive)
 - **30%**: gentle reduction (default)
 - **100%**: no reduction at all
 
-If background noise still leaks through, lower this value.
+### Virtual Mic Driver (macOS only)
+Toggle in Settings to install or remove the virtual audio driver. When installed, the Gated Volume slider is hidden — the gate uses chunk replacement (true silence) instead of volume reduction.
 
 ---
 

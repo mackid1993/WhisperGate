@@ -110,7 +110,10 @@ public class NoiseGateEngine
         }
         else
         {
-            if (db >= threshold - 6)
+            // Open threshold: compensate for volume reduction on the capture signal
+            float volumeReductionDB = _settings.ExclusiveModeEnabled ? 0 : (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
+            float openThreshold = threshold - 6 + volumeReductionDB;
+            if (db >= openThreshold)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;

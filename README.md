@@ -106,7 +106,7 @@ WhisperGate launches silently to the system tray. Double-click the tray icon or 
 
 Shortcuts are automatically synced from superwhisper's preferences. Click **Sync** in settings if you change your superwhisper shortcuts.
 
-> **Note:** On Windows, volume 0 is true silence — no virtual mic driver is needed. The volume-based gate works perfectly.
+> **Note:** No virtual mic driver is needed on Windows. Unlike macOS where volume 0 still leaks ~20dB of audio, Windows delivers true silence at volume 0. The volume-based gate already provides clean silence when the gate is closed, so there's nothing for STT to hallucinate on.
 
 ---
 

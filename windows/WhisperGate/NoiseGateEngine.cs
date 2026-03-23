@@ -80,7 +80,13 @@ public class NoiseGateEngine
 
         if (_gateIsOpen)
         {
-            if (db >= threshold) _lastSpeechTime = now;
+            if (db >= threshold)
+            {
+                _lastSpeechTime = now;
+                // Force mic to full volume — Windows may duck it during "calls"
+                if (!_settings.ExclusiveModeEnabled)
+                    SetVolume(_savedVolume);
+            }
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {
                 _gateIsOpen = false;

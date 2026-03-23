@@ -2,8 +2,9 @@ import AudioToolbox
 import CoreAudio
 import Accelerate
 
-/// Noise gate engine — exact same logic as the Windows version.
-/// Simple: two volume levels (full and reduced), energy-based threshold, hold time.
+/// Noise gate engine with two modes:
+/// - Volume mode (fallback): reduces system mic volume when gate is closed
+/// - Virtual mic mode: writes audio/silence to shared ring buffer for HAL plugin
 final class NoiseGateEngine {
     private weak var state: AppState?
     private var audioQueue: AudioQueueRef?
@@ -18,10 +19,19 @@ final class NoiseGateEngine {
     private var cachedHoldTime: Double = 0.3
     private var reductionFactor: Float = 0.30
 
+    // Virtual mic ring buffer (nil = volume mode fallback)
+    private var ringBuffer: SharedRingBuffer?
+
     var hasProfile: Bool { true }
     func saveProfile(_ p: VoiceProfile) {}
 
-    init(state: AppState) { self.state = state }
+    init(state: AppState) {
+        self.state = state
+        let rb = SharedRingBuffer()
+        if rb.create() {
+            ringBuffer = rb
+        }
+    }
     func prepare() { resolveDevice() }
 
     func engageGate() {
@@ -38,7 +48,10 @@ final class NoiseGateEngine {
 
         // Start gated
         gateIsOpen = false
-        AudioDeviceManager.setInputVolume(deviceID, volume: max(savedVolume * reductionFactor, 0.001))
+        if ringBuffer == nil {
+            // Volume mode fallback
+            AudioDeviceManager.setInputVolume(deviceID, volume: max(savedVolume * reductionFactor, 0.001))
+        }
         startUITimer()
         state.isGateEngaged = true
         state.isGateOpen = false
@@ -57,7 +70,11 @@ final class NoiseGateEngine {
         state.currentLevelSmoothed = -160
     }
 
-    func stop() { if audioQueue != nil { disengageGate() } }
+    func stop() {
+        if audioQueue != nil { disengageGate() }
+        ringBuffer?.close()
+        ringBuffer = nil
+    }
 
     private func resolveDevice() {
         if let uid = state?.inputDeviceUID, let id = AudioDeviceManager.deviceByUID(uid) { deviceID = id }
@@ -82,14 +99,27 @@ final class NoiseGateEngine {
                 lastSpeechTime = now
             } else if (now - lastSpeechTime) > cachedHoldTime {
                 gateIsOpen = false
-                AudioDeviceManager.setInputVolume(deviceID, volume: max(savedVolume * reductionFactor, 0.001))
+                if ringBuffer == nil {
+                    AudioDeviceManager.setInputVolume(deviceID, volume: max(savedVolume * reductionFactor, 0.001))
+                }
             }
         } else {
-            // Same as Windows: threshold - 10 + 4 = threshold - 6
             if db >= cachedThreshold - 6 {
                 gateIsOpen = true
                 lastSpeechTime = now
-                AudioDeviceManager.setInputVolume(deviceID, volume: savedVolume)
+                if ringBuffer == nil {
+                    AudioDeviceManager.setInputVolume(deviceID, volume: savedVolume)
+                }
+            }
+        }
+
+        // Write to virtual mic ring buffer
+        if let rb = ringBuffer {
+            let samples = ref.pointee.mAudioData.assumingMemoryBound(to: Float.self)
+            if gateIsOpen {
+                rb.write(samples, count: n)
+            } else {
+                rb.writeSilence(count: n)
             }
         }
     }

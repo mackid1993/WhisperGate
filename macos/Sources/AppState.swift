@@ -70,6 +70,17 @@ final class AppState {
     var pushToTalkShortcut: KeyCombo? { didSet { guard didFinishInit else { return }; saveCombo(pushToTalkShortcut, "ptt") } }
     var recordingShortcut: KeyCombo? { didSet { guard didFinishInit else { return }; saveCombo(recordingShortcut, "rec") } }
     var startAtLogin: Bool = false { didSet { guard didFinishInit else { return }; save("startAtLogin", startAtLogin); LoginItemManager.setEnabled(startAtLogin) } }
+    var virtualMicEnabled: Bool = false {
+        didSet {
+            guard didFinishInit else { return }
+            save("virtualMicEnabled", virtualMicEnabled)
+            let enable = virtualMicEnabled
+            DispatchQueue.global(qos: .userInitiated).async {
+                if enable && !DriverInstaller.isInstalled { DriverInstaller.install() }
+                else if !enable && DriverInstaller.isInstalled { DriverInstaller.uninstall() }
+            }
+        }
+    }
     // Runtime
     var isGateEngaged: Bool = false
     var isGateOpen: Bool = true
@@ -118,6 +129,7 @@ final class AppState {
         pushToTalkShortcut = loadCombo("ptt")
         recordingShortcut = loadCombo("rec")
         startAtLogin = d.bool(forKey: "startAtLogin")
+        virtualMicEnabled = d.object(forKey: "virtualMicEnabled") as? Bool ?? false
         didFinishInit = true
     }
 
@@ -125,6 +137,10 @@ final class AppState {
         // Restore mic volume in case a previous session left it muted
         if let devID = AudioDeviceManager.defaultInputDevice() {
             AudioDeviceManager.setInputVolume(devID, volume: 1.0)
+        }
+        // Sync driver state with setting (in case of manual removal)
+        if virtualMicEnabled && !DriverInstaller.isInstalled {
+            virtualMicEnabled = false
         }
         if pushToTalkShortcut == nil && recordingShortcut == nil {
             syncFromSuperWhisper()

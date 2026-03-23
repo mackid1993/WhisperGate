@@ -44,7 +44,7 @@ struct PopoverView: View {
                 .padding(16)
             }
         }
-        .frame(width: 340, height: 480)
+        .frame(width: 340, height: 720)
     }
 
     // MARK: - Header
@@ -87,9 +87,9 @@ struct PopoverView: View {
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(state.isGateEngaged ? (state.isGateOpen ? "Full Volume" : "Noise Reduced") : "Standby")
+                    Text(state.isGateEngaged ? (state.isGateOpen ? "Full Volume" : "Mic Muted") : "Standby")
                         .font(.system(.body, weight: .medium))
-                    Text(state.isGateEngaged ? (state.isGateOpen ? "Your voice is passing through" : "Mic level reduced — filtering noise") : "Waiting for superwhisper hotkey")
+                    Text(state.isGateEngaged ? (state.isGateOpen ? "Your voice is passing through" : "Mic muted — listening for speech") : "Waiting for superwhisper hotkey")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -207,6 +207,21 @@ struct PopoverView: View {
             .pickerStyle(.menu).controlSize(.small)
 
             Toggle("Start at Login", isOn: $state.startAtLogin).controlSize(.small)
+
+            Toggle("Virtual Mic Driver", isOn: $state.virtualMicEnabled).controlSize(.small)
+            if state.virtualMicEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Installed", systemImage: "checkmark.circle.fill")
+                        .font(.caption).foregroundStyle(.green)
+                    Text("Select **\"WhisperGate Mic\"** as your input device in superwhisper for true silence when gated.")
+                        .font(.system(size: 9)).foregroundStyle(.secondary)
+                    Text("Driver location: /Library/Audio/Plug-Ins/HAL/WhisperGateAudio.driver")
+                        .font(.system(size: 8, design: .monospaced)).foregroundStyle(.tertiary)
+                }
+            } else {
+                Text("Installs a lightweight audio driver to /Library/Audio/Plug-Ins/HAL/ that creates a virtual mic with true silence when gated. Removes cleanly when toggled off.")
+                    .font(.system(size: 9)).foregroundStyle(.tertiary)
+            }
 
             if let error = state.errorMessage {
                 Label(error, systemImage: "xmark.circle.fill")

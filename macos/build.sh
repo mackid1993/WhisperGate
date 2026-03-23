@@ -22,15 +22,49 @@ echo "Swift: $(swiftc --version 2>&1 | head -1)"
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
+SDK_PATH="$(xcrun --show-sdk-path)"
+
 # Resources
 cp "$RESOURCES_DIR/Info.plist" "$APP_BUNDLE/Contents/"
 echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
+
+# Build HAL Plugin (virtual mic driver)
+HALDIR="$BUILD_DIR/HALPlugin"
+DRIVER_BUNDLE="$APP_BUNDLE/Contents/Resources/WhisperGateAudio.driver"
+echo "Building HAL plugin..."
+mkdir -p "$DRIVER_BUNDLE/Contents/MacOS"
+cp "$HALDIR/Info.plist" "$DRIVER_BUNDLE/Contents/"
+
+# Compile driver for arm64
+clang -bundle -o "$OUTPUT_DIR/WhisperGateDriver_arm64" \
+    -target arm64-apple-macosx14.0 \
+    -isysroot "$SDK_PATH" \
+    -framework CoreAudio -framework CoreFoundation \
+    "$HALDIR/WhisperGateDriver.c"
+
+# Compile driver for x86_64
+clang -bundle -o "$OUTPUT_DIR/WhisperGateDriver_x86_64" \
+    -target x86_64-apple-macosx14.0 \
+    -isysroot "$SDK_PATH" \
+    -framework CoreAudio -framework CoreFoundation \
+    "$HALDIR/WhisperGateDriver.c"
+
+# Universal driver binary
+lipo -create \
+    "$OUTPUT_DIR/WhisperGateDriver_arm64" \
+    "$OUTPUT_DIR/WhisperGateDriver_x86_64" \
+    -output "$DRIVER_BUNDLE/Contents/MacOS/WhisperGateDriver"
+
+rm "$OUTPUT_DIR/WhisperGateDriver_arm64" "$OUTPUT_DIR/WhisperGateDriver_x86_64"
+
+# Sign the driver bundle
+codesign --force --deep --sign - "$DRIVER_BUNDLE"
+echo "HAL plugin built and signed."
 
 # Compile
 SOURCES=$(find "$SOURCES_DIR" -name "*.swift" -type f)
 echo "Compiling $(echo "$SOURCES" | wc -l | tr -d ' ') Swift files (universal binary)..."
 
-SDK_PATH="$(xcrun --show-sdk-path)"
 SWIFT_FLAGS="-parse-as-library -sdk $SDK_PATH \
     -framework SwiftUI -framework AppKit -framework AVFoundation \
     -framework CoreAudio -framework AudioToolbox -framework Accelerate \

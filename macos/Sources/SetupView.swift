@@ -5,6 +5,7 @@ struct SetupView: View {
     @State private var micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     @State private var ptt: KeyCombo? = SuperWhisperIntegration.readPushToTalk()
     @State private var rec: KeyCombo? = SuperWhisperIntegration.readToggleRecording()
+    @State private var installDriver = true
     var onComplete: () -> Void
 
     var body: some View {
@@ -83,12 +84,42 @@ struct SetupView: View {
                 }
             }
 
+            Divider()
+
+            // Step 3: Virtual Mic
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Step 3: Virtual Mic (Recommended)").font(.headline)
+                Toggle("Install WhisperGate Mic driver", isOn: $installDriver)
+                    .controlSize(.small)
+                Text("This creates a virtual microphone called **\"WhisperGate Mic\"** on your system. When the noise gate is active and you're not speaking, the virtual mic outputs pure silence — preventing superwhisper from transcribing background noise.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Text("Without this, WhisperGate falls back to reducing your mic volume, which can still leak audio.")
+                    .font(.callout).foregroundStyle(.secondary)
+                if installDriver {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("You'll be prompted for your admin password to install the driver.", systemImage: "lock.shield")
+                            .font(.caption).foregroundStyle(.orange)
+                        Text("After setup, open superwhisper and select **\"WhisperGate Mic\"** as your input device.")
+                            .font(.callout.bold()).foregroundStyle(.primary)
+                    }
+                }
+                Text("Driver location: /Library/Audio/Plug-Ins/HAL/WhisperGateAudio.driver")
+                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+                Text("You can add or remove this at any time from Settings.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+
             Spacer(minLength: 8)
 
             // Start
             Button(action: {
                 if let ptt { AppState.shared.pushToTalkShortcut = ptt }
                 if let rec { AppState.shared.recordingShortcut = rec }
+                if installDriver {
+                    // Install synchronously — admin dialog blocks anyway
+                    DriverInstaller.install()
+                    AppState.shared.virtualMicEnabled = true
+                }
                 onComplete()
             }) {
                 Text("Start WhisperGate")

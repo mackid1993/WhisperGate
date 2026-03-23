@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>WhisperGateDriver</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.whispergate.audio.driver</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>WhisperGateAudio</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleSignature</key>
+    <string>BNDL</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFPlugInFactories</key>
+    <dict>
+        <key>EEA5773D-CC43-49F1-9E16-5F5D323FE3B9</key>
+        <string>WhisperGateDriverFactory</string>
+    </dict>
+    <key>CFPlugInTypes</key>
+    <dict>
+        <key>443ABAB8-E7B3-491A-B985-BEB9187030DB</key>
+        <array>
+            <string>EEA5773D-CC43-49F1-9E16-5F5D323FE3B9</string>
+        </array>
+    </dict>
+    <key>AudioServerPlugIn_LoadingConditions</key>
+    <dict>
+        <key>IOService Matching</key>
+        <array>
+            <dict>
+                <key>IOProviderClass</key>
+                <string>IOPlatformExpertDevice</string>
+            </dict>
+        </array>
+    </dict>
+</dict>
+</plist>

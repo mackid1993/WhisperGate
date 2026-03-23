@@ -193,6 +193,27 @@
                 </StackPanel>
             </Border>
 
+            <!-- Force Max Volume -->
+            <Border Background="{StaticResource CardBrush}" CornerRadius="6"
+                    Padding="14,10" Margin="0,12,0,0"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Force Max Volume While Speaking" FontSize="13" Foreground="{StaticResource FgBrush}"
+                                   VerticalAlignment="Center"/>
+                        <CheckBox x:Name="ForceMaxVolumeCheck" Grid.Column="1"
+                                  Checked="OnForceMaxVolumeChanged" Unchecked="OnForceMaxVolumeChanged"
+                                  VerticalAlignment="Center"/>
+                    </Grid>
+                    <TextBlock Text="Forces mic to 100% while speech is detected. Prevents Windows from auto-ducking your mic volume during dictation."
+                               FontSize="11" Foreground="{StaticResource FgTertiaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
             <!-- Start at Login -->
             <Border Background="{StaticResource CardBrush}" CornerRadius="6"
                     Padding="14,10" Margin="0,12,0,0"

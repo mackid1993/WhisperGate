@@ -38,6 +38,12 @@ public class NoiseGateEngine
             var enumerator = new MMDeviceEnumerator();
             _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
             _savedVolume = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
+            // If force max or previous session left volume low, ensure full volume
+            if (_settings.ForceMaxVolume || _savedVolume < 0.5f)
+            {
+                _device.AudioEndpointVolume.MasterVolumeLevelScalar = 1.0f;
+                _savedVolume = 1.0f;
+            }
 
             _reductionFactor = Math.Max(_settings.ReductionPercent / 100f, MinGatedVolume);
 
@@ -83,9 +89,9 @@ public class NoiseGateEngine
             if (db >= threshold)
             {
                 _lastSpeechTime = now;
-                // Force mic to full volume — Windows may duck it during "calls"
-                if (!_settings.ExclusiveModeEnabled)
-                    SetVolume(_savedVolume);
+                // Force mic to max volume if enabled — prevents Windows auto-ducking
+                if (_settings.ForceMaxVolume && !_settings.ExclusiveModeEnabled)
+                    SetVolume(1.0f);
             }
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {

@@ -219,10 +219,16 @@ struct PopoverView: View {
                         .font(.system(size: 9)).foregroundStyle(.secondary)
                     Text("Driver location: /Library/Audio/Plug-Ins/HAL/WhisperGateAudio.driver")
                         .font(.system(size: 8, design: .monospaced)).foregroundStyle(.tertiary)
+                    Label("Adding or removing the driver restarts Core Audio, which may cause a brief system hang.", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 9)).foregroundStyle(.orange)
                 }
             } else {
-                Text("Installs a lightweight audio driver to /Library/Audio/Plug-Ins/HAL/ that creates a virtual mic with true silence when gated. Removes cleanly when toggled off.")
-                    .font(.system(size: 9)).foregroundStyle(.tertiary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Installs a lightweight audio driver that creates a virtual mic with true silence when gated.")
+                        .font(.system(size: 9)).foregroundStyle(.tertiary)
+                    Label("Installing or removing restarts Core Audio, which may cause a brief system hang.", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 9)).foregroundStyle(.orange)
+                }
             }
 
             if let error = state.errorMessage {

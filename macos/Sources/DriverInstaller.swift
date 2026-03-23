@@ -25,8 +25,14 @@ enum DriverInstaller {
 
     static func uninstall() {
         guard isInstalled else { return }
+        // Stop engine from writing to ring buffer before removing driver
+        AppState.shared.engine?.stop()
+        // Clean up shared memory file
+        unlink(SharedRingBuffer.filePath)
         let dst = installedPath.path
         runPrivileged("rm -rf '\(dst)' && killall coreaudiod")
+        // Restart engine without ring buffer (volume fallback mode)
+        AppState.shared.engine = NoiseGateEngine(state: AppState.shared)
     }
 
     private static func runPrivileged(_ command: String) {

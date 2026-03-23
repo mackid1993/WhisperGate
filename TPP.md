@@ -5,16 +5,32 @@ WhisperGate is a lightweight noise gate for superwhisper dictation. It monitors 
 
 ## Current State (2026-03-23)
 
-### Status: v1.0.0 Released + Virtual Mic Driver IN PROGRESS
-Both platforms working. Binaries published on GitHub.
-Virtual mic driver (HAL plugin) partially implemented — loads but has CPU spike and audio passthrough issues.
+### Status: v1.1.0 Released
+Both platforms working. Virtual mic driver shipped and tested on multiple Macs.
 
-## Active Work: Virtual Mic Driver (macOS)
+### macOS — Working
+- SwiftUI menu bar app with popover UI (lazy rendering, zero CPU when closed)
+- Carbon RegisterEventHotKey for combo shortcuts + CGEventSource.flagsState polling for modifier-only shortcuts
+- No permissions needed for hotkey detection (no Accessibility, no Input Monitoring)
+- Only requires Microphone permission
+- Auto-syncs shortcuts from superwhisper UserDefaults (`com.superduper.superwhisper`)
+- AudioQueue-based mic capture (only runs during hotkey hold)
+- Energy-based gate with user-adjustable threshold and gated volume
+- **Virtual mic driver (AudioServerPlugin)** — true silence via chunk replacement
+- Escape key only intercepted when gate is active (dynamic registration)
+- Universal binary (arm64 + x86_64)
 
-### Goal
-Replace volume manipulation with chunk replacement via a virtual audio device. When the gate is closed, superwhisper receives true silence (zero bytes) instead of reduced-volume audio that causes STT hallucinations.
+### Windows — Working
+- WPF app with dark Fluent-style UI
+- System tray via Hardcodet.NotifyIcon.Wpf
+- WH_KEYBOARD_LL low-level keyboard hook
+- NAudio for mic capture, Windows CoreAudio (MMDevice) for volume control
+- Escape only cancels when gate is active
+- No virtual mic needed — Windows volume 0 is true silence
 
-### Architecture
+### Virtual Mic Driver (macOS)
+
+#### Architecture
 ```
 Real Mic (full volume, always)
     |
@@ -27,7 +43,7 @@ Real Mic (full volume, always)
   gate closed: write zeros to mmap'd file
     |
     v
-[~/.whispergate_audio.buf - mmap'd ring buffer file]
+[/tmp/whispergate_audio.buf - mmap'd ring buffer file]
     |
     v
 [WhisperGateAudio.driver - HAL plugin in coreaudiod]
@@ -39,109 +55,63 @@ Real Mic (full volume, always)
 superwhisper reads from it
 ```
 
-### What Works
-- [x] HAL plugin compiles (C, universal binary arm64+x86_64)
-- [x] Plugin loads in coreaudiod (confirmed via logs: Factory called, Initialize called)
-- [x] "WhisperGate Mic" appears as a selectable input device in superwhisper
-- [x] SharedRingBuffer.swift creates mmap'd file at ~/.whispergate_audio.buf (confirmed fd=3)
-- [x] NoiseGateEngine writes audio/silence to ring buffer based on gate state
-- [x] Driver installer (install/uninstall via osascript with admin privileges)
-- [x] Setup UI with driver toggle and explanation
-- [x] build.sh compiles and bundles the HAL plugin
+#### How It Works
+- App creates mmap'd file at `/tmp/whispergate_audio.buf` on engine init
+- AudioQueue callback writes raw samples (gate open) or zeros (gate closed) to ring buffer
+- HAL plugin lazily opens the file in DoIOOperation, copies data into its own internal ring buffer
+- Plugin serves audio to clients using `mSampleTime % kRing_Buffer_Frame_Size` positioning (BlackHole pattern)
+- When app isn't running, plugin outputs silence
 
-### What's Broken — MUST FIX
-1. **CPU spike from GetZeroTimeStamp** — The timestamp advancement logic causes coreaudiod to spin. Tried single-advance-per-call (BlackHole pattern) and math-based jump — both spike. The `gHostTicksPerFrame` calculation or the advancement condition may be wrong. COMPARE CAREFULLY with BlackHole's working implementation at `/tmp/BlackHole.c` lines 4387-4450.
+#### Driver Lifecycle
+- Installed on first launch (setup screen) or via Settings toggle
+- Lives at `/Library/Audio/Plug-Ins/HAL/WhisperGateAudio.driver` (requires admin)
+- Persists across app restarts — superwhisper's mic selection is stable
+- User can remove via Settings toggle
+- `killall coreaudiod` reloads (launchctl kickstart blocked by SIP)
 
-2. **No audio passes through the virtual mic** — The driver's DoIOOperation reads from the ring buffer but superwhisper hears silence. Possible causes:
-   - The ring buffer read/write positions may be out of sync (app writes at its own rate, driver reads at HAL's rate — different clocks)
-   - The driver's `open()` call to `~/.whispergate_audio.buf` may fail from coreaudiod's sandbox (errno=2 was seen when file didn't exist yet; need to verify it works when file DOES exist)
-   - The mmap may not be working cross-process between the app and the driver
-
-3. **Device shows as headphones/output in some contexts** — Fixed `CanBeDefaultDevice=0` and input-only scope, but may need more work.
-
-### Failed Approaches (Do NOT Retry)
-- **POSIX shm_open** — coreaudiod sandbox blocks it. The driver process (running as _coreaudiod user) cannot access POSIX shared memory created by the app. Use file-based mmap instead.
-- **Volume manipulation with mute + pulsed detection** — Clips first syllable of speech. Up to 250ms latency between pulses means beginning of utterances get cut. Abandoned.
-- **Volume manipulation with very low gated volume (1%)** — Still causes STT hallucinations. Not low enough for true silence.
-- **Three-state gate (open/gated/muted)** — Overcomplicated, introduced more bugs than it solved. The two-state gate (open/closed) with volume fallback works.
-- **Plugin Owner = kAudioObjectSystemObject** — Must be kAudioObjectUnknown (per BlackHole).
-- **Forward-declaring static gDriverVtable then redefining** — C tentative definitions technically work but caused confusion. Use single definition at bottom with forward ref to gDriverRef only.
-- **shm_open retry in DoIOOperation** — Causes CPU overhead on the IO hot path. Use lazy open instead.
-- **Ring buffer creation only on gate engage** — Race condition: driver StartIO fires before gate engages, so file doesn't exist. Create at app launch instead.
-
-### Key Discoveries (Lore)
-- **coreaudiod sandbox**: The HAL plugin runs in its own process (`com.apple.audio.Core-Audio-Driver-Service.helper`). It's sandboxed but CAN read files from the user's home directory. It CANNOT use POSIX shm_open. It runs as `_coreaudiod` user (home=/var/empty), so use `SCDynamicStoreCopyConsoleUser()` to find the real user's home.
-- **AMFI warning is not a blocker**: Ad-hoc signed drivers log `AMFI: adhoc signed` and `not valid` warnings but still load and run. No developer certificate needed.
-- **Plugin loading**: coreaudiod scans ONLY `/Library/Audio/Plug-Ins/HAL/` (NOT ~/Library). Needs admin to install. After install, `killall coreaudiod` reloads (launchctl kickstart blocked by SIP).
-- **GetZeroTimeStamp is called VERY frequently** — Any bug here causes 100% CPU. Must be O(1), no loops, no syscalls.
-- **BlackHole reference implementation** saved at `/tmp/BlackHole.c` (4620 lines, MIT licensed). Key sections: vtable (405-432), QueryInterface (636-676), Initialize (729-795), HasProperty dispatch (964-1000), GetPlugInPropertyData (1397-1558), GetDevicePropertyData (2155-2271), IO ops (4302-4620).
-- **AudioServerPlugIn_LoadingConditions** key in Info.plist is required — use `IOProviderClass: IOPlatformExpertDevice`.
-- **Stream direction 1 = input** (data flows from device to app). Our device is input-only.
-- **kAudioDevicePropertyDeviceCanBeDefaultDevice must be 0** — Otherwise every app grabs the virtual mic as default, causing system-wide audio issues.
-- **NSHomeDirectory()** returns correct path in non-sandboxed app. `NSUserName()` also works for building the path.
-- **DriverInstaller.runPrivileged** uses `osascript -e 'do shell script "..." with administrator privileges'` via Process. Must use `waitUntilExit()` for synchronous operations but dispatch to background for UI responsiveness.
-
-### Files Created This Session
-```
-macos/HALPlugin/
-  WhisperGateDriver.c    — AudioServerPlugin implementation (~500 lines C)
-  Info.plist             — Plugin bundle metadata with factory UUID + loading conditions
-macos/Sources/
-  SharedRingBuffer.swift — mmap'd file ring buffer for app<->driver IPC
-  DriverInstaller.swift  — Install/uninstall driver with admin privileges
-```
-
-### Files Modified This Session
-- `macos/Sources/NoiseGateEngine.swift` — Added ring buffer writing in onBuffer, dual-mode (volume fallback + virtual mic)
-- `macos/Sources/AppState.swift` — Added virtualMicEnabled toggle, driver state sync
-- `macos/Sources/PopoverView.swift` — Added virtual mic driver toggle in settings
-- `macos/Sources/SetupView.swift` — Added Step 3 for driver installation
-- `macos/Sources/HotkeyMonitor.swift` — Dynamic Escape key registration (only when gate active)
-- `macos/build.sh` — Added HAL plugin compilation, signing, bundling
-- `windows/WhisperGate/HotkeyManager.cs` — Escape only cancels when gate active
-
-### Next Steps (Priority Order)
-1. **Fix GetZeroTimeStamp CPU spike** — Study BlackHole's exact implementation. The issue may be in `gHostTicksPerFrame` calculation or the single-advance condition. Consider copying BlackHole's code verbatim and adapting minimally.
-2. **Fix audio passthrough** — Verify the driver can actually mmap the file by checking logs after app creates it. The read/write position SPSC pattern should work if the file is accessible. May need to add logging to DoIOOperation to confirm data is being read.
-3. **Test end-to-end** — Once both fixes are in, test: engage gate -> speak -> verify superwhisper transcribes -> stop speaking -> verify true silence (no hallucinations).
-4. **Commit and update TPP** — Once working, commit the HAL plugin feature as a new version.
-
----
-
-## Stable Features (v1.0.0)
-
-### macOS — Working
-- SwiftUI menu bar app with popover UI (lazy rendering, zero CPU when closed)
-- Carbon RegisterEventHotKey for combo shortcuts + CGEventSource.flagsState polling for modifier-only shortcuts
-- No permissions needed for hotkey detection (no Accessibility, no Input Monitoring)
-- Only requires Microphone permission
-- Auto-syncs shortcuts from superwhisper UserDefaults (`com.superduper.superwhisper`)
-- AudioQueue-based mic capture (only runs during hotkey hold)
-- Energy-based gate with user-adjustable threshold and gated volume
-- Escape key only intercepted when gate is active (dynamic registration)
-- Universal binary (arm64 + x86_64)
-
-### Windows — Working
-- WPF app with dark Fluent-style UI
-- System tray via Hardcodet.NotifyIcon.Wpf
-- WH_KEYBOARD_LL low-level keyboard hook
-- NAudio for mic capture, Windows CoreAudio (MMDevice) for volume control
-- Escape only cancels when gate is active
+#### Key Technical Details
+- `kDevice_RingBufferSize = 16384` for ZeroTimeStampPeriod (512 caused CPU spike)
+- `kRing_Buffer_Frame_Size = 65536` for internal ring buffer
+- POSIX `shm_open` blocked by coreaudiod sandbox — use file-based mmap at `/tmp/` instead
+- File must be created with `umask(0)` or `FileManager.createFile(posixPermissions: 0o666)` — default umask strips read permissions for other users
+- coreaudiod runs as `_coreaudiod` user (home=/var/empty) — cannot access `~/` paths due to TCC
+- `/tmp/` is accessible cross-user and survives until reboot (file recreated on app launch)
+- `kAudioDevicePropertyDeviceCanBeDefaultDevice = 0` — prevents every app from grabbing virtual mic as default
+- AMFI warns about ad-hoc signing but does NOT block — driver loads and runs without developer certificate
+- Tested on multiple Macs — works without Gatekeeper prompt when transferred directly (no quarantine flag)
+- `DriverInstaller.runPrivileged` must run on background thread to avoid UI freeze during admin dialog
+- On uninstall: stop engine, delete ring buffer file, remove driver, restart coreaudiod, recreate engine in volume fallback mode
 
 ### Gate Logic (both platforms)
 ```
-Hotkey pressed -> mic volume set to gatedVolume
-  -> Voice detected (above threshold) -> restore full volume
-  -> Voice stops (300ms hold) -> reduce to gatedVolume again
-Hotkey released or Escape -> restore original volume
+Hotkey pressed -> gate engages
+  Virtual mic mode: write audio/silence to ring buffer
+  Volume fallback:  reduce mic volume to gatedVolume
+  -> Voice detected (above threshold) -> pass audio / restore full volume
+  -> Voice stops (hold time) -> write silence / reduce volume
+Hotkey released or Escape -> restore original state
 ```
+
+- Threshold: user-adjustable, -60 to -20 dB
+- Gated Volume: user-adjustable, 0% to 100% (volume fallback mode only)
+- Hold time: 300ms
+- Detection: energy-based RMS via vDSP_measqv, continuously monitored
+- Open threshold: threshold - 6 dB (hysteresis)
+- Gated Volume slider hidden when virtual mic driver is installed
+
+### Platform Differences
+- Mac volume 0 leaks ~20dB → virtual mic driver provides true silence
+- Windows volume 0 is true silence → no driver needed
+- Mac: Carbon RegisterEventHotKey + CGEventSource polling. Windows: WH_KEYBOARD_LL hook.
+- Mac: superwhisper stores shortcuts in UserDefaults. Windows: preferences.json.
+- Mac: AudioQueue with vDSP_measqv for RMS. Windows: NAudio WaveInEvent with manual RMS.
 
 ### File Structure
 ```
 macos/
   HALPlugin/
-    WhisperGateDriver.c          — AudioServerPlugin (virtual mic)
-    Info.plist                   — Plugin metadata
+    WhisperGateDriver.c          — AudioServerPlugin (virtual mic, ~500 lines C)
+    Info.plist                   — Plugin metadata + loading conditions
   Sources/
     WhisperGateApp.swift          — App entry, MenuBarExtra
     AppState.swift                — State management, virtualMicEnabled toggle
@@ -151,7 +121,7 @@ macos/
     PopoverView.swift             — Menu bar popover UI with driver toggle
     SetupView.swift               — First-launch setup with driver install step
     SharedRingBuffer.swift        — mmap'd file ring buffer for IPC
-    DriverInstaller.swift         — HAL plugin install/uninstall
+    DriverInstaller.swift         — HAL plugin install/uninstall with admin privileges
     CalibrateButton.swift         — Calibration helper + LiveRecorder
     SuperWhisperIntegration.swift — Reads superwhisper UserDefaults
     VoiceProfile.swift            — Voice profile types
@@ -173,6 +143,18 @@ windows/
     WhisperGate.csproj             — .NET 8 / WPF project
   build.bat
 ```
+
+### Failed Approaches (Do NOT Retry)
+- **POSIX shm_open for IPC** — coreaudiod sandbox blocks it. Use file-based mmap at `/tmp/`.
+- **Ring buffer file in ~/home** — coreaudiod can't access due to TCC. Use `/tmp/`.
+- **`open()` via `@_silgen_name`** — mode argument gets mangled. Use `FileManager.createFile` then `Darwin.open`.
+- **Volume mute + pulsed detection** — Clips first syllable. Abandoned.
+- **Three-state gate (open/gated/muted)** — Overcomplicated. Two-state with volume fallback works.
+- **`kDevice_RingBufferSize = 512`** — Way too small, causes GetZeroTimeStamp to spin CPU. Use 16384.
+- **Plugin Owner = kAudioObjectSystemObject** — Must be kAudioObjectUnknown.
+- **`CanBeDefaultDevice = 1`** — Every app grabs virtual mic as default. Must be 0.
+- **Scope-dependent properties returning true for output** — Input-only device must not claim output capabilities.
+- **`DriverInstaller.install()` on main thread** — Freezes UI during admin dialog. Must dispatch to background.
 
 ## Build Requirements
 - macOS: Xcode Command Line Tools (`xcode-select --install`)

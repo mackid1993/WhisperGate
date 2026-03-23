@@ -72,16 +72,8 @@ public class NoiseGateEngine
         _gateIsOpen = true;
     }
 
-    private void OnAudioData(float rawDB)
+    private void OnAudioData(float db)
     {
-        // Compensate dB to full-volume equivalent so thresholds match Mac behavior.
-        // When gate is closed and volume is reduced, the captured signal is quieter.
-        // Add back the reduction so the threshold comparison is always against full-scale.
-        float volumeReductionDB = (!_gateIsOpen && !_settings.ExclusiveModeEnabled)
-            ? (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)))
-            : 0;
-        float db = rawDB - volumeReductionDB; // subtract negative = add back lost dB
-
         LatestDB = db;
         double now = Environment.TickCount64;
         float threshold = _settings.Threshold;
@@ -118,7 +110,7 @@ public class NoiseGateEngine
         }
         else
         {
-            // Same hysteresis as Mac: threshold - 6
+            // Hysteresis: threshold - 6, same as Mac
             if (db >= threshold - 6)
             {
                 _gateIsOpen = true;

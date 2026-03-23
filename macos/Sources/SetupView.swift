@@ -99,6 +99,8 @@ struct SetupView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Label("You'll be prompted for your admin password to install the driver.", systemImage: "lock.shield")
                             .font(.caption).foregroundStyle(.orange)
+                        Label("Installing restarts Core Audio, which may cause a brief system hang.", systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
                         Text("After setup, open superwhisper and select **\"WhisperGate Mic\"** as your input device.")
                             .font(.callout.bold()).foregroundStyle(.primary)
                     }

@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
@@ -14,6 +15,11 @@ public class NoiseGateEngine
     private double _lastSpeechTime;
     private float _reductionFactor = 0.30f;
     private readonly double _holdTimeMs = 300;
+
+    // Pulsed detection for 0% gated volume
+    private Timer? _pulseTimer;
+    private bool _isPulsing;
+    private bool _isSilentMode; // true when gated volume is effectively 0
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
@@ -41,13 +47,24 @@ public class NoiseGateEngine
             _gateIsOpen = false;
             _lastSpeechTime = 0;
             _reductionFactor = Math.Max(_settings.ReductionPercent / 100f, 0.001f);
-            SetVolume(_savedVolume * _reductionFactor);
+            _isSilentMode = _settings.ReductionPercent < 1f; // 0% = silent mode
+
+            if (_isSilentMode)
+            {
+                SetVolume(0);
+                StartPulseTimer();
+            }
+            else
+            {
+                SetVolume(_savedVolume * _reductionFactor);
+            }
         }
         catch { DisengageGate(); }
     }
 
     public void DisengageGate()
     {
+        StopPulseTimer();
         if (_waveIn != null)
         {
             _waveIn.StopRecording();
@@ -87,20 +104,63 @@ public class NoiseGateEngine
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {
                 _gateIsOpen = false;
-                SetVolume(_savedVolume * _reductionFactor);
+                if (_isSilentMode)
+                {
+                    SetVolume(0);
+                    StartPulseTimer();
+                }
+                else
+                {
+                    SetVolume(_savedVolume * _reductionFactor);
+                }
+            }
+        }
+        else if (_isSilentMode)
+        {
+            // Silent mode: only check during pulse windows
+            if (_isPulsing && db > -120)
+            {
+                // Got real audio during pulse — check for speech
+                _isPulsing = false;
+                SetVolume(0);
+                if (db >= threshold - 6)
+                {
+                    _gateIsOpen = true;
+                    _lastSpeechTime = now;
+                    StopPulseTimer();
+                    SetVolume(_savedVolume);
+                }
             }
         }
         else
         {
-            // Open threshold accounts for 30% volume reduction (~10dB)
-            // Add 4dB hysteresis to prevent cycling
-            if (db >= threshold - 10 + 4)
+            // Normal mode: continuous detection
+            if (db >= threshold - 6)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;
                 SetVolume(_savedVolume);
             }
         }
+    }
+
+    private void StartPulseTimer()
+    {
+        StopPulseTimer();
+        _pulseTimer = new Timer(_ =>
+        {
+            if (_waveIn == null || _gateIsOpen) return;
+            // Briefly raise volume for one capture buffer
+            SetVolume(_savedVolume * 0.05f); // 5% — enough for detection
+            _isPulsing = true;
+        }, null, 200, 200);
+    }
+
+    private void StopPulseTimer()
+    {
+        _pulseTimer?.Dispose();
+        _pulseTimer = null;
+        _isPulsing = false;
     }
 
     private void SetVolume(float volume)

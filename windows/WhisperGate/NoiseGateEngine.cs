@@ -14,15 +14,15 @@ public class NoiseGateEngine
     private float _reductionFactor = 0.30f;
     private readonly double _holdTimeMs = 300;
 
-    // Shared mode capture (used when gate is open — both us and superwhisper hear audio)
+    // Shared mode capture (normal operation)
     private WaveInEvent? _sharedCapture;
 
-    // Exclusive mode capture (used when gate is closed — we hear audio, superwhisper gets silence)
+    // Exclusive mode capture (silent mode — true silence for other apps)
     private WasapiCapture? _exclusiveCapture;
-
-    // True when gated volume is 0% and we use exclusive mode switching
-    private bool _isSilentMode;
     private readonly object _modeLock = new();
+
+    // Minimum gated volume floor for non-exclusive mode
+    private const float MinGatedVolume = 0.05f;
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
@@ -39,20 +39,17 @@ public class NoiseGateEngine
             _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
             _savedVolume = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
 
-            _reductionFactor = Math.Max(_settings.ReductionPercent / 100f, 0.001f);
-            _isSilentMode = _settings.ReductionPercent < 1f;
+            _reductionFactor = Math.Max(_settings.ReductionPercent / 100f, MinGatedVolume);
 
             _gateIsOpen = false;
             _lastSpeechTime = 0;
 
-            if (_isSilentMode)
+            if (_settings.ExclusiveModeEnabled)
             {
-                // Start in exclusive mode — superwhisper gets silence
                 StartExclusiveCapture();
             }
             else
             {
-                // Start in shared mode with reduced volume
                 StartSharedCapture();
                 SetVolume(_savedVolume * _reductionFactor);
             }
@@ -87,9 +84,8 @@ public class NoiseGateEngine
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {
                 _gateIsOpen = false;
-                if (_isSilentMode)
+                if (_settings.ExclusiveModeEnabled)
                 {
-                    // Switch to exclusive mode — silences superwhisper
                     System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                     {
                         lock (_modeLock)
@@ -108,14 +104,12 @@ public class NoiseGateEngine
         }
         else
         {
-            float openThreshold = _isSilentMode ? threshold - 6 : threshold - 6;
-            if (db >= openThreshold)
+            if (db >= threshold - 6)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;
-                if (_isSilentMode)
+                if (_settings.ExclusiveModeEnabled)
                 {
-                    // Switch to shared mode — superwhisper resumes
                     System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                     {
                         lock (_modeLock)
@@ -123,7 +117,6 @@ public class NoiseGateEngine
                             if (!_gateIsOpen || _device == null) return;
                             StopExclusiveCapture();
                             StartSharedCapture();
-                            SetVolume(_savedVolume);
                         }
                     });
                 }
@@ -177,10 +170,8 @@ public class NoiseGateEngine
         }
         catch
         {
-            // Exclusive mode failed — fall back to shared with volume floor
+            // Exclusive mode not supported — fall back to shared with volume floor
             _exclusiveCapture = null;
-            _isSilentMode = false;
-            _reductionFactor = 0.02f;
             StartSharedCapture();
             SetVolume(_savedVolume * _reductionFactor);
         }
@@ -197,14 +188,13 @@ public class NoiseGateEngine
 
     private void OnExclusiveData(object? sender, WaveInEventArgs e)
     {
-        // Exclusive mode may use float32 format — handle both int16 and float32
         if (_exclusiveCapture?.WaveFormat.BitsPerSample == 32)
             OnAudioData(ComputeDBFloat(e.Buffer, e.BytesRecorded));
         else
             OnAudioData(ComputeDB(e.Buffer, e.BytesRecorded));
     }
 
-    // ---- RMS calculation ----
+    // ---- RMS ----
 
     private static float ComputeDB(byte[] buffer, int bytes)
     {

@@ -32,6 +32,8 @@ public partial class SettingsWindow : Window
         ThresholdValue.Text = $"{_settings.Threshold} dB";
         ReductionSlider.Value = _settings.ReductionPercent;
         ReductionValue.Text = $"{_settings.ReductionPercent}%";
+        ExclusiveModeCheck.IsChecked = _settings.ExclusiveModeEnabled;
+        GatedVolumePanel.Visibility = _settings.ExclusiveModeEnabled ? Visibility.Collapsed : Visibility.Visible;
         StartAtLoginCheck.IsChecked = _settings.StartAtLogin;
     }
 
@@ -88,6 +90,14 @@ public partial class SettingsWindow : Window
         App.Instance.Hotkeys.Unregister();
         App.Instance.Hotkeys.Register();
         RefreshDisplay();
+    }
+
+    private void OnExclusiveModeChanged(object sender, RoutedEventArgs e)
+    {
+        if (_settings == null) return;
+        _settings.ExclusiveModeEnabled = ExclusiveModeCheck.IsChecked == true;
+        GatedVolumePanel.Visibility = _settings.ExclusiveModeEnabled ? Visibility.Collapsed : Visibility.Visible;
+        _settings.Save();
     }
 
     private void OnStartAtLoginChanged(object sender, RoutedEventArgs e)

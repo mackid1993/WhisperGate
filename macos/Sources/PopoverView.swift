@@ -147,7 +147,7 @@ struct PopoverView: View {
             Text("Set just above your room noise level.")
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
 
-            if !state.virtualMicEnabled {
+            if !DriverInstaller.isInstalled {
                 HStack {
                     Text("Gated Volume").font(.caption).foregroundStyle(.secondary)
                     Spacer()

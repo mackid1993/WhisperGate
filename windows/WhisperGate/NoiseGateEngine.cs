@@ -56,7 +56,13 @@ public class NoiseGateEngine
                 SetVolume(_savedVolume * _reductionFactor);
             }
         }
-        catch { DisengageGate(); }
+        catch (Exception ex)
+        {
+            try { System.IO.File.WriteAllText(
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "whispergate_error.txt"),
+                ex.ToString()); } catch { }
+            DisengageGate();
+        }
     }
 
     public void DisengageGate()

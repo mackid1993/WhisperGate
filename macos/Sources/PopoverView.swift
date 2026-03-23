@@ -202,7 +202,7 @@ struct PopoverView: View {
 
             Picker("Input Device", selection: $state.inputDeviceUID) {
                 Text("System Default").tag(nil as String?)
-                ForEach(AudioDeviceManager.inputDevices()) { device in
+                ForEach(AudioDeviceManager.inputDevices().filter { $0.uid != "com.whispergate.virtualmic" }) { device in
                     Text(device.name).tag(device.uid as String?)
                 }
             }

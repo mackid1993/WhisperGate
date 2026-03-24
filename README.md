@@ -2,6 +2,8 @@
 
 A lightweight noise gate for [superwhisper](https://superwhisper.com) dictation. Filters out background noise (TV, music, conversations) so only your voice gets transcribed. Available for macOS and Windows.
 
+**This is something I built primarily for myself, so I won't be accepting feature requests or issues. If it doesn't work for you, I'm sorry. It's not intended to. It's intended to work for me. I'm just providing it to help the community if it works for some people. I provided binaries as a courtesy, but please consider building from source. Please also note that no support will be provided. This is really built for me.**
+
 ## How It Works
 
 1. **Press your superwhisper hotkey** — WhisperGate activates the noise gate

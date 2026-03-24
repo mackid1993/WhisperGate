@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
@@ -10,23 +9,18 @@ public class NoiseGateEngine
 {
     private readonly Settings _settings;
     private MMDevice? _device;
-    private float _savedVolume = 1f;
+    private WaveInEvent? _waveIn;
     private bool _gateIsOpen = true;
     private double _lastSpeechTime;
-    private float _reductionFactor = 0.30f;
     private readonly double _holdTimeMs = 300;
 
-    private WaveInEvent? _waveIn;
-
-    // Per-app silence mode: control superwhisper's capture session volume
+    // Per-app volume control for superwhisper
     private SimpleAudioVolume? _superwhisperVolume;
-
-    private const float MinGatedVolume = 0.05f;
+    private int _superwhisperPid;
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
     public bool IsEngaged => _waveIn != null;
-    public string? LastError { get; private set; }
     public string? StatusMessage { get; private set; }
 
     public NoiseGateEngine(Settings settings) => _settings = settings;
@@ -34,13 +28,18 @@ public class NoiseGateEngine
     public void EngageGate()
     {
         if (_waveIn != null) return;
-        LastError = null;
+        StatusMessage = null;
         try
         {
             var enumerator = new MMDeviceEnumerator();
             _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
-            _savedVolume = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
-            _reductionFactor = Math.Max(_settings.ReductionPercent / 100f, MinGatedVolume);
+
+            // Find superwhisper's capture session
+            _superwhisperVolume = FindSuperwhisperSession(_device, out _superwhisperPid);
+            if (_superwhisperVolume == null)
+                StatusMessage = "superwhisper not detected — make sure it is running and using the mic.";
+            else
+                StatusMessage = $"Detected superwhisper (PID {_superwhisperPid}) — controlling its mic volume.";
 
             _waveIn = new WaveInEvent
             {
@@ -50,36 +49,12 @@ public class NoiseGateEngine
             _waveIn.DataAvailable += OnDataAvailable;
             _waveIn.StartRecording();
 
+            // Start gated
             _gateIsOpen = false;
             _lastSpeechTime = 0;
-
-            if (_settings.ExclusiveModeEnabled)
-            {
-                // Per-app silence: find superwhisper's capture session
-                _superwhisperVolume = FindSuperwhisperSession(_device, out var msg);
-                if (_superwhisperVolume != null)
-                {
-                    _superwhisperVolume.Volume = 0f;
-                    StatusMessage = msg;
-                }
-                else
-                {
-                    StatusMessage = "Searching for superwhisper...";
-                    LastError = "superwhisper not detected. Make sure it is running and using the mic.";
-                    // Fall back to system volume
-                    SetVolume(Math.Max(_savedVolume * _reductionFactor, 0.001f));
-                }
-            }
-            else
-            {
-                SetVolume(Math.Max(_savedVolume * _reductionFactor, 0.001f));
-            }
+            SetSuperwhisperVolume(0f);
         }
-        catch (Exception ex)
-        {
-            LastError = ex.Message;
-            DisengageGate();
-        }
+        catch { DisengageGate(); }
     }
 
     public void DisengageGate()
@@ -91,17 +66,9 @@ public class NoiseGateEngine
             _waveIn.Dispose();
             _waveIn = null;
         }
-        // Restore superwhisper's session volume
-        if (_superwhisperVolume != null)
-        {
-            try { _superwhisperVolume.Volume = 1f; } catch { }
-            _superwhisperVolume = null;
-        }
-        if (_device != null)
-        {
-            try { _device.AudioEndpointVolume.MasterVolumeLevelScalar = _savedVolume; } catch { }
-            _device = null;
-        }
+        SetSuperwhisperVolume(1f);
+        _superwhisperVolume = null;
+        _device = null;
         _gateIsOpen = true;
     }
 
@@ -121,7 +88,6 @@ public class NoiseGateEngine
         }
         float db = sum > 0 ? (float)(10 * Math.Log10(sum / samples)) : -160;
         LatestDB = db;
-        TryFindSuperwhisper();
 
         double now = Environment.TickCount64;
         float threshold = _settings.Threshold;
@@ -135,10 +101,7 @@ public class NoiseGateEngine
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {
                 _gateIsOpen = false;
-                if (_superwhisperVolume != null)
-                    try { _superwhisperVolume.Volume = 0f; } catch { }
-                else
-                    SetVolume(Math.Max(_savedVolume * _reductionFactor, 0.001f));
+                SetSuperwhisperVolume(0f);
             }
         }
         else
@@ -148,36 +111,36 @@ public class NoiseGateEngine
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;
-                if (_superwhisperVolume != null)
-                    try { _superwhisperVolume.Volume = 1f; } catch { }
-                else
-                    SetVolume(_savedVolume);
+                SetSuperwhisperVolume(1f);
             }
         }
     }
 
-    // ---- Find superwhisper's capture session ----
+    // ---- superwhisper session control ----
 
-    private static SimpleAudioVolume? FindSuperwhisperSession(MMDevice captureDevice, out string? statusMsg)
+    private void SetSuperwhisperVolume(float vol)
     {
-        statusMsg = null;
+        if (_superwhisperVolume == null) return;
+        try { _superwhisperVolume.Volume = vol; } catch { }
+    }
+
+    private static SimpleAudioVolume? FindSuperwhisperSession(MMDevice captureDevice, out int pid)
+    {
+        pid = 0;
         try
         {
-            var sessionManager = captureDevice.AudioSessionManager;
-            var sessions = sessionManager.Sessions;
-
+            var sessions = captureDevice.AudioSessionManager.Sessions;
             for (int i = 0; i < sessions.Count; i++)
             {
                 var session = sessions[i];
                 try
                 {
-                    int pid = (int)session.GetProcessID;
-                    if (pid == 0) continue;
-
-                    var proc = Process.GetProcessById(pid);
+                    int p = (int)session.GetProcessID;
+                    if (p == 0) continue;
+                    var proc = Process.GetProcessById(p);
                     if (proc.ProcessName.Contains("superwhisper", StringComparison.OrdinalIgnoreCase))
                     {
-                        statusMsg = $"Detected superwhisper (PID {pid}) — true silence mode active.";
+                        pid = p;
                         return session.SimpleAudioVolume;
                     }
                 }
@@ -186,30 +149,5 @@ public class NoiseGateEngine
         }
         catch { }
         return null;
-    }
-
-    // ---- Periodically re-find superwhisper if it wasn't running at engage ----
-
-    private double _lastSessionSearch = 0;
-
-    private void TryFindSuperwhisper()
-    {
-        if (_superwhisperVolume != null || _device == null || !_settings.ExclusiveModeEnabled) return;
-        double now = Environment.TickCount64;
-        if (now - _lastSessionSearch < 2000) return; // search every 2s max
-        _lastSessionSearch = now;
-        _superwhisperVolume = FindSuperwhisperSession(_device, out var msg);
-        if (_superwhisperVolume != null)
-        {
-            StatusMessage = msg;
-            LastError = null;
-            if (!_gateIsOpen) try { _superwhisperVolume.Volume = 0f; } catch { }
-        }
-    }
-
-    private void SetVolume(float volume)
-    {
-        try { if (_device != null) _device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f); }
-        catch { }
     }
 }

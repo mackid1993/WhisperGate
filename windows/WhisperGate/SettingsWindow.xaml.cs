@@ -30,10 +30,6 @@ public partial class SettingsWindow : Window
         RecText.Text = _settings.ToggleRecordingDisplay;
         ThresholdSlider.Value = _settings.Threshold;
         ThresholdValue.Text = $"{_settings.Threshold} dB";
-        ReductionSlider.Value = _settings.ReductionPercent;
-        ReductionValue.Text = $"{_settings.ReductionPercent}%";
-        TrueSilenceCheck.IsChecked = _settings.ExclusiveModeEnabled;
-        GatedVolumePanel.Visibility = _settings.ExclusiveModeEnabled ? Visibility.Collapsed : Visibility.Visible;
         StartAtLoginCheck.IsChecked = _settings.StartAtLogin;
     }
 
@@ -51,8 +47,8 @@ public partial class SettingsWindow : Window
             }
             else
             {
-                StatusText.Text = "Noise Reduced";
-                StatusDetail.Text = "Mic level reduced — filtering noise";
+                StatusText.Text = "Silenced";
+                StatusDetail.Text = "superwhisper mic muted — listening for speech";
                 StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x38));
             }
             var norm = Math.Max(0, Math.Min(1, (engine.LatestDB + 80) / 80));
@@ -61,27 +57,23 @@ public partial class SettingsWindow : Window
         else
         {
             StatusText.Text = "Standby";
-            StatusDetail.Text = engine.StatusMessage ?? "Waiting for superwhisper hotkey";
+            StatusDetail.Text = "Waiting for superwhisper hotkey";
             StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E));
             LevelFill.Width = 0;
         }
 
-        // Show status/error for true silence mode
-        if (engine.StatusMessage != null && _settings.ExclusiveModeEnabled)
+        // Show superwhisper detection status
+        if (engine.StatusMessage != null)
         {
-            TrueSilenceStatus.Text = engine.StatusMessage;
-            TrueSilenceStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xCB, 0x5F));
-            TrueSilenceStatus.Visibility = Visibility.Visible;
-        }
-        else if (engine.LastError != null && _settings.ExclusiveModeEnabled)
-        {
-            TrueSilenceStatus.Text = engine.LastError;
-            TrueSilenceStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x50, 0x50));
-            TrueSilenceStatus.Visibility = Visibility.Visible;
+            SuperwhisperStatus.Text = engine.StatusMessage;
+            SuperwhisperStatus.Foreground = engine.StatusMessage.Contains("Detected")
+                ? new SolidColorBrush(Color.FromRgb(0x6C, 0xCB, 0x5F))
+                : new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x38));
+            SuperwhisperStatus.Visibility = Visibility.Visible;
         }
         else
         {
-            TrueSilenceStatus.Visibility = Visibility.Collapsed;
+            SuperwhisperStatus.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -93,14 +85,6 @@ public partial class SettingsWindow : Window
         _settings.Save();
     }
 
-    private void OnReductionChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_settings == null) return;
-        _settings.ReductionPercent = (float)e.NewValue;
-        ReductionValue.Text = $"{(int)e.NewValue}%";
-        _settings.Save();
-    }
-
     private void OnSync(object sender, RoutedEventArgs e)
     {
         SuperWhisperIntegration.SyncShortcuts(_settings);
@@ -108,14 +92,6 @@ public partial class SettingsWindow : Window
         App.Instance.Hotkeys.Unregister();
         App.Instance.Hotkeys.Register();
         RefreshDisplay();
-    }
-
-    private void OnTrueSilenceChanged(object sender, RoutedEventArgs e)
-    {
-        if (_settings == null) return;
-        _settings.ExclusiveModeEnabled = TrueSilenceCheck.IsChecked == true;
-        GatedVolumePanel.Visibility = _settings.ExclusiveModeEnabled ? Visibility.Collapsed : Visibility.Visible;
-        _settings.Save();
     }
 
     private void OnStartAtLoginChanged(object sender, RoutedEventArgs e)

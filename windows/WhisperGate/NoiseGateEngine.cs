@@ -9,7 +9,7 @@ public class NoiseGateEngine
 {
     private readonly Settings _settings;
     private MMDevice? _device;
-    private WasapiCapture? _capture;
+    private WaveInEvent? _capture;
 
     // Per-app volume control for superwhisper's capture session
     private SimpleAudioVolume? _swVolume;
@@ -39,7 +39,11 @@ public class NoiseGateEngine
                 ? $"Detected superwhisper (PID {_swPid})"
                 : "superwhisper not detected — start a dictation first, then re-engage.";
 
-            _capture = new WasapiCapture(_device, false, 50);
+            _capture = new WaveInEvent
+            {
+                WaveFormat = new WaveFormat(48000, 16, 1),
+                BufferMilliseconds = 50
+            };
             _capture.DataAvailable += OnDataAvailable;
             _capture.StartRecording();
 
@@ -72,12 +76,28 @@ public class NoiseGateEngine
     private int _dbgCount = 0;
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        float db = ComputeDB(e.Buffer, e.BytesRecorded, _capture?.WaveFormat);
+        int samples = e.BytesRecorded / 2;
+        if (samples == 0) return;
+        double sum = 0;
+        for (int i = 0; i < e.BytesRecorded; i += 2)
+        {
+            double s = BitConverter.ToInt16(e.Buffer, i) / 32768.0;
+            sum += s * s;
+        }
+        float db = sum > 0 ? (float)(10 * Math.Log10(sum / samples)) : -160;
         LatestDB = db;
 
-        // Show actual values for debugging
-        if (_dbgCount++ % 20 == 0 && _capture != null)
-            StatusMessage = $"superwhisper PID {_swPid} | db={db:F1} thr={_settings.Threshold:F0} fmt={_capture.WaveFormat}";
+        if (_dbgCount++ % 20 == 0)
+        {
+            StatusMessage = $"superwhisper PID {_swPid} | db={db:F1} thr={_settings.Threshold:F0}";
+            // Re-search for superwhisper if not found or process died
+            if (_swVolume == null && _device != null)
+            {
+                _swVolume = FindSuperwhisperSession(_device, out _swPid);
+                if (_swVolume != null && !_gateIsOpen)
+                    SetSW(0f);
+            }
+        }
 
         bool shouldOpen = db >= _settings.Threshold;
 
@@ -121,35 +141,4 @@ public class NoiseGateEngine
         return null;
     }
 
-    private static float ComputeDB(byte[] buf, int bytes, WaveFormat? fmt)
-    {
-        if (fmt == null) return -160;
-        if (fmt.BitsPerSample == 32)
-        {
-            int n = bytes / (4 * fmt.Channels);
-            if (n == 0) return -160;
-            double sum = 0;
-            int step = 4 * fmt.Channels;
-            // Use first channel only for RMS
-            for (int i = 0; i < bytes - 3; i += step)
-            {
-                double s = BitConverter.ToSingle(buf, i);
-                sum += s * s;
-            }
-            return sum > 0 ? (float)(10 * Math.Log10(sum / n)) : -160;
-        }
-        else
-        {
-            int n = bytes / (2 * fmt.Channels);
-            if (n == 0) return -160;
-            double sum = 0;
-            int step = 2 * fmt.Channels;
-            for (int i = 0; i < bytes - 1; i += step)
-            {
-                double s = BitConverter.ToInt16(buf, i) / 32768.0;
-                sum += s * s;
-            }
-            return sum > 0 ? (float)(10 * Math.Log10(sum / n)) : -160;
-        }
-    }
 }

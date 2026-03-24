@@ -131,7 +131,7 @@ public class NoiseGateEngine
             else
             {
                 float dropDB = (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
-                openThreshold = threshold + dropDB - 4;
+                openThreshold = threshold + dropDB - 8;
             }
 
             if (db >= openThreshold)
@@ -188,6 +188,8 @@ public class NoiseGateEngine
     }
 
     // ---- Exclusive mode (raw AudioClient, bypasses NAudio bugs) ----
+    // NAudio's IsFormatSupported passes non-null ppClosestMatch for exclusive mode
+    // which violates the WASAPI spec. Skip it — use MixFormat and try Initialize directly.
 
     private void StartExclusiveCapture()
     {
@@ -195,40 +197,41 @@ public class NoiseGateEngine
         try
         {
             _exclusiveClient = _device.AudioClient;
+            _exclusiveFormat = _exclusiveClient.MixFormat;
+            long bufferDuration = 200 * 10000; // 20ms
 
-            // Find a format the device supports in exclusive mode
-            _exclusiveFormat = FindExclusiveFormat(_exclusiveClient);
-            if (_exclusiveFormat == null)
-                throw new InvalidOperationException("No exclusive format supported");
+            // Try event-driven exclusive first, then timer-driven, then shorter buffers
+            Exception? lastEx = null;
+            (AudioClientStreamFlags flags, long dur, long per)[] attempts = {
+                (AudioClientStreamFlags.EventCallback, bufferDuration, bufferDuration),
+                (AudioClientStreamFlags.EventCallback, 100 * 10000, 100 * 10000),
+                (AudioClientStreamFlags.None, bufferDuration, 0),
+                (AudioClientStreamFlags.None, 100 * 10000, 0),
+            };
 
-            // Try to initialize — handle buffer alignment errors
-            long bufferDuration = 200 * 10000; // 20ms in 100ns units
-            try
+            bool initialized = false;
+            foreach (var (sFlags, dur, per) in attempts)
             {
-                _exclusiveClient.Initialize(
-                    AudioClientShareMode.Exclusive,
-                    AudioClientStreamFlags.EventCallback,
-                    bufferDuration, bufferDuration,
-                    _exclusiveFormat, Guid.Empty);
-            }
-            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x88890019))
-            {
-                // AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED — get aligned size and retry
-                int aligned = _exclusiveClient.BufferSize;
-                bufferDuration = (long)(10000000.0 / _exclusiveFormat.SampleRate * aligned + 0.5);
-                _exclusiveClient.Dispose();
-                _exclusiveClient = _device.AudioClient;
-                _exclusiveClient.Initialize(
-                    AudioClientShareMode.Exclusive,
-                    AudioClientStreamFlags.EventCallback,
-                    bufferDuration, bufferDuration,
-                    _exclusiveFormat, Guid.Empty);
+                try
+                {
+                    _exclusiveClient.Initialize(
+                        AudioClientShareMode.Exclusive, sFlags,
+                        dur, per, _exclusiveFormat, Guid.Empty);
+                    initialized = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastEx = ex;
+                    try { _exclusiveClient.Dispose(); } catch { }
+                    _exclusiveClient = _device.AudioClient;
+                }
             }
 
-            var eventHandle = new EventWaitHandle(false, EventResetMode.AutoReset);
-            _exclusiveClient.SetEventHandle(eventHandle.SafeWaitHandle.DangerousGetHandle());
+            if (!initialized)
+                throw lastEx ?? new InvalidOperationException("All exclusive mode attempts failed");
+
             _exclusiveCaptureClient = _exclusiveClient.AudioCaptureClient;
-
             int bytesPerFrame = _exclusiveFormat.Channels * _exclusiveFormat.BitsPerSample / 8;
 
             _exclusiveRunning = true;
@@ -238,34 +241,36 @@ public class NoiseGateEngine
             {
                 while (_exclusiveRunning)
                 {
-                    if (!eventHandle.WaitOne(500)) continue;
+                    Thread.Sleep(5);
                     if (!_exclusiveRunning) break;
-
-                    int packetSize = _exclusiveCaptureClient.GetNextPacketSize();
-                    while (packetSize > 0 && _exclusiveRunning)
+                    try
                     {
-                        var ptr = _exclusiveCaptureClient.GetBuffer(
-                            out int framesAvailable,
-                            out AudioClientBufferFlags flags);
-
-                        int bytesAvailable = framesAvailable * bytesPerFrame;
-
-                        if (bytesAvailable > 0 && (flags & AudioClientBufferFlags.Silent) == 0)
+                        int packetSize = _exclusiveCaptureClient.GetNextPacketSize();
+                        while (packetSize > 0 && _exclusiveRunning)
                         {
-                            var buf = new byte[bytesAvailable];
-                            Marshal.Copy(ptr, buf, 0, bytesAvailable);
+                            var ptr = _exclusiveCaptureClient.GetBuffer(
+                                out int framesAvailable,
+                                out AudioClientBufferFlags flags);
 
-                            if (_exclusiveFormat.BitsPerSample >= 32)
-                                OnAudioData(ComputeDBFloat(buf, bytesAvailable));
-                            else
-                                OnAudioData(ComputeDB(buf, bytesAvailable));
+                            int bytesAvailable = framesAvailable * bytesPerFrame;
+
+                            if (bytesAvailable > 0 && (flags & AudioClientBufferFlags.Silent) == 0)
+                            {
+                                var buf = new byte[bytesAvailable];
+                                Marshal.Copy(ptr, buf, 0, bytesAvailable);
+
+                                if (_exclusiveFormat.BitsPerSample >= 32)
+                                    OnAudioData(ComputeDBFloat(buf, bytesAvailable));
+                                else
+                                    OnAudioData(ComputeDB(buf, bytesAvailable));
+                            }
+
+                            _exclusiveCaptureClient.ReleaseBuffer(framesAvailable);
+                            packetSize = _exclusiveCaptureClient.GetNextPacketSize();
                         }
-
-                        _exclusiveCaptureClient.ReleaseBuffer(framesAvailable);
-                        packetSize = _exclusiveCaptureClient.GetNextPacketSize();
                     }
+                    catch { }
                 }
-                eventHandle.Dispose();
             })
             { IsBackground = true, Priority = ThreadPriority.Highest };
             _exclusiveThread.Start();
@@ -275,47 +280,8 @@ public class NoiseGateEngine
             StopExclusiveCapture();
             LastError = $"Exclusive mode failed: {ex.Message}";
             StartSharedCapture();
-            SetVolume(_savedVolume * _reductionFactor);
+            SetVolume(_reductionFactor);
         }
-    }
-
-    private static WaveFormat? FindExclusiveFormat(AudioClient client)
-    {
-        var mix = client.MixFormat;
-
-        // Try the mix format first
-        if (client.IsFormatSupported(AudioClientShareMode.Exclusive, mix))
-            return mix;
-
-        // Try common formats — both WaveFormatExtensible and plain WaveFormat
-        // Some drivers accept one but not the other
-        int[] rates = { 48000, 44100 };
-        int[] bits = { 16, 24, 32 };
-        int[] channels = { mix.Channels, 1, 2 };
-
-        foreach (int rate in rates)
-        {
-            foreach (int bit in bits)
-            {
-                foreach (int ch in channels)
-                {
-                    // Try plain WaveFormat
-                    var plain = new WaveFormat(rate, bit, ch);
-                    if (client.IsFormatSupported(AudioClientShareMode.Exclusive, plain))
-                        return plain;
-
-                    // Try IEEE float
-                    if (bit == 32)
-                    {
-                        var ieee = WaveFormat.CreateIeeeFloatWaveFormat(rate, ch);
-                        if (client.IsFormatSupported(AudioClientShareMode.Exclusive, ieee))
-                            return ieee;
-                    }
-                }
-            }
-        }
-
-        return null;
     }
 
     private void StopExclusiveCapture()

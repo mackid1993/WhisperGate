@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Threading;
 using System.Windows;
 using Microsoft.Win32;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -9,6 +10,7 @@ namespace WhisperGate;
 public partial class App : Application
 {
     private TaskbarIcon? _trayIcon;
+    private Mutex? _singleInstanceMutex;
     public NoiseGateEngine Engine { get; private set; } = null!;
     public HotkeyManager Hotkeys { get; private set; } = null!;
     public Settings AppSettings { get; private set; } = null!;
@@ -18,6 +20,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Single instance check
+        _singleInstanceMutex = new Mutex(true, "WhisperGate_SingleInstance", out bool isNew);
+        if (!isNew)
+        {
+            MessageBox.Show("WhisperGate is already running.", "WhisperGate", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
 
         AppSettings = Settings.Load();
 

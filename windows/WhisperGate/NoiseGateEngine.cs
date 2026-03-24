@@ -27,6 +27,7 @@ public class NoiseGateEngine
     public bool IsGateOpen => _gateIsOpen;
     public bool IsEngaged => _waveIn != null;
     public string? LastError { get; private set; }
+    public string? StatusMessage { get; private set; }
 
     public NoiseGateEngine(Settings settings) => _settings = settings;
 
@@ -59,9 +60,11 @@ public class NoiseGateEngine
                 if (_superwhisperVolume != null)
                 {
                     _superwhisperVolume.Volume = 0f;
+                    StatusMessage = "Detected superwhisper — true silence mode active.";
                 }
                 else
                 {
+                    StatusMessage = "Waiting for superwhisper...";
                     LastError = "Could not find superwhisper audio session. Make sure superwhisper is running.";
                     // Fall back to system volume
                     SetVolume(Math.Max(_savedVolume * _reductionFactor, 0.001f));
@@ -193,8 +196,12 @@ public class NoiseGateEngine
         if (now - _lastSessionSearch < 2000) return; // search every 2s max
         _lastSessionSearch = now;
         _superwhisperVolume = FindSuperwhisperSession(_device);
-        if (_superwhisperVolume != null && !_gateIsOpen)
-            try { _superwhisperVolume.Volume = 0f; } catch { }
+        if (_superwhisperVolume != null)
+        {
+            StatusMessage = "Detected superwhisper — true silence mode active.";
+            LastError = null;
+            if (!_gateIsOpen) try { _superwhisperVolume.Volume = 0f; } catch { }
+        }
     }
 
     private void SetVolume(float volume)

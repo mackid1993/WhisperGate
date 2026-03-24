@@ -161,6 +161,7 @@ public class NoiseGateEngine
         }
 
         LatestDB = db;
+        StatusMessage = $"PID {_swPid} | db={db:F1} thr={_settings.Threshold:F0} gate={(_gateIsOpen ? "OPEN" : "CLOSED")}";
 
         bool shouldOpen = db >= _settings.Threshold;
         if (shouldOpen != _gateIsOpen)

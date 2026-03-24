@@ -16,11 +16,9 @@ public class NoiseGateEngine
     private readonly double _holdTimeMs = 600;
     private const double MinStateChangeMs = 500; // prevent oscillation
 
-    // 20% gated volume: enough signal for reliable detection in feedback
-    // topology, small enough that STT ignores it, and the 20%→100% jump
-    // is only 14dB (much smoother than 5%→100% at 26dB).
-    private const float GatedVolume = 0.20f;
     private const float OpenVolume = 1.0f;
+    private const float MinGatedVolume = 0.05f;
+    private float _gatedVolume = 0.20f;
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
@@ -37,6 +35,8 @@ public class NoiseGateEngine
             _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
             _savedVolume = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
 
+            _gatedVolume = Math.Max(_settings.ReductionPercent / 100f, MinGatedVolume);
+
             _waveIn = new WaveInEvent
             {
                 WaveFormat = new WaveFormat(48000, 16, 1),
@@ -48,7 +48,7 @@ public class NoiseGateEngine
             // Start gated at 5%
             _gateIsOpen = false;
             _lastSpeechTime = 0;
-            SetVolume(GatedVolume);
+            SetVolume(_gatedVolume);
         }
         catch { DisengageGate(); }
     }
@@ -99,7 +99,7 @@ public class NoiseGateEngine
             {
                 _gateIsOpen = false;
                 _lastStateChange = now;
-                SetVolume(GatedVolume);
+                SetVolume(_gatedVolume);
             }
         }
         else
@@ -107,7 +107,7 @@ public class NoiseGateEngine
             // Standard compensated threshold (from audio engineering):
             // open_threshold = close_threshold + 20*log10(reductionFactor) - hysteresis
             // At 20%: 20*log10(0.20) = -14dB, minus 3dB margin = -17dB shift
-            float attenuationDB = (float)(20 * Math.Log10(GatedVolume));
+            float attenuationDB = (float)(20 * Math.Log10(Math.Max(_gatedVolume, 0.01)));
             float openThreshold = threshold + attenuationDB - 3;
             if (db >= openThreshold && (now - _lastStateChange) > MinStateChangeMs)
             {

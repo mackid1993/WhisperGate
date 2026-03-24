@@ -30,6 +30,8 @@ public partial class SettingsWindow : Window
         RecText.Text = _settings.ToggleRecordingDisplay;
         ThresholdSlider.Value = _settings.Threshold;
         ThresholdValue.Text = $"{_settings.Threshold} dB";
+        ReductionSlider.Value = _settings.ReductionPercent;
+        ReductionValue.Text = $"{_settings.ReductionPercent}%";
         StartAtLoginCheck.IsChecked = _settings.StartAtLogin;
     }
 
@@ -69,6 +71,14 @@ public partial class SettingsWindow : Window
         if (_settings == null) return;
         _settings.Threshold = (float)e.NewValue;
         ThresholdValue.Text = $"{(int)e.NewValue} dB";
+        _settings.Save();
+    }
+
+    private void OnReductionChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_settings == null) return;
+        _settings.ReductionPercent = (float)e.NewValue;
+        ReductionValue.Text = $"{(int)e.NewValue}%";
         _settings.Save();
     }
 

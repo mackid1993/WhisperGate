@@ -119,11 +119,13 @@ public class NoiseGateEngine
         }
         else
         {
-            // Account for volume reduction: captured signal is quieter by 20*log10(reductionFactor)
-            // Add that to the hysteresis so the gate can actually open
-            float reductionDB = _settings.ExclusiveModeEnabled ? 0 :
-                (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
-            if (db >= threshold + reductionDB - 6)
+            // Match Mac logic: compare against full-volume equivalent.
+            // When gated, captured dB is lower by 20*log10(reductionFactor).
+            // Add that back so threshold-6 works the same as Mac.
+            float fullVolumeDB = db;
+            if (!_settings.ExclusiveModeEnabled)
+                fullVolumeDB -= (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
+            if (fullVolumeDB >= threshold - 6)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;
@@ -176,9 +178,13 @@ public class NoiseGateEngine
     private void StartExclusiveCapture()
     {
         if (_exclusiveCapture != null || _device == null) return;
-        // Exclusive mode requires event sync and the device's native format
-        _exclusiveCapture = new WasapiCapture(_device, true);
+        // Query the device's minimum period for exclusive mode
+        _device.AudioClient.GetDevicePeriod(out _, out long minPeriod);
+        int bufferMs = Math.Max((int)(minPeriod / 10000), 1);
+        _exclusiveCapture = new WasapiCapture(_device, true, bufferMs);
         _exclusiveCapture.ShareMode = AudioClientShareMode.Exclusive;
+        // Use the device's native mix format
+        _exclusiveCapture.WaveFormat = _device.AudioClient.MixFormat;
         _exclusiveFormat = _exclusiveCapture.WaveFormat;
         _exclusiveCapture.DataAvailable += (_, e) =>
         {

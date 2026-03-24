@@ -101,9 +101,9 @@ public class NoiseGateEngine
         }
         else
         {
-            // At 5% volume, any voice is well above -80dB.
-            // Use a fixed low threshold that works with any mic hardware.
-            float openThreshold = -80;
+            // At 5% volume, signal is 26dB quieter than at 100%.
+            // 20*log10(0.05) = -26. Shift threshold down by that amount.
+            float openThreshold = threshold - 26;
             if (db >= openThreshold && (now - _lastStateChange) > MinStateChangeMs)
             {
                 _gateIsOpen = true;

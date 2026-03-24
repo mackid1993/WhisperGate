@@ -69,10 +69,15 @@ public class NoiseGateEngine
     // No state machine. No hysteresis. No hold time.
     // The per-app volume control IS the chunk replacement.
 
+    private int _dbgCount = 0;
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
         float db = ComputeDB(e.Buffer, e.BytesRecorded, _capture?.WaveFormat);
         LatestDB = db;
+
+        // Show actual values for debugging
+        if (_dbgCount++ % 20 == 0 && _capture != null)
+            StatusMessage = $"superwhisper PID {_swPid} | db={db:F1} thr={_settings.Threshold:F0} fmt={_capture.WaveFormat}";
 
         bool shouldOpen = db >= _settings.Threshold;
 

@@ -128,9 +128,12 @@
                 </Grid>
             </Border>
 
-            <!-- Threshold Section -->
+            <!-- Noise Gate Section -->
             <TextBlock Text="Noise Gate" FontSize="13" FontWeight="SemiBold"
-                       Foreground="{StaticResource FgBrush}" Margin="0,0,0,10"/>
+                       Foreground="{StaticResource FgBrush}" Margin="0,0,0,4"/>
+            <TextBlock TextWrapping="Wrap" FontSize="11"
+                       Foreground="{StaticResource FgTertiaryBrush}" Margin="0,0,0,10"
+                       Text="WhisperGate reduces your mic volume when you're not speaking, then restores it instantly when you talk. Adjust both settings so the gate opens reliably when you speak but stays closed during silence."/>
 
             <Border Background="{StaticResource CardBrush}" CornerRadius="8"
                     Padding="16" Margin="0,0,0,8"
@@ -149,8 +152,9 @@
                     <Slider x:Name="ThresholdSlider" Minimum="-60" Maximum="-20" Value="-40"
                             IsSnapToTickEnabled="True" TickFrequency="1"
                             ValueChanged="OnThresholdChanged"/>
-                    <TextBlock Text="Set just above your room noise level." FontSize="11"
-                               Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,12"/>
+                    <TextBlock TextWrapping="Wrap" FontSize="11"
+                               Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,12"
+                               Text="Controls when audio passes through. Start at -40 dB and adjust: if the gate doesn't open when you speak, move left (more sensitive). If background noise leaks through, move right (less sensitive). Watch the level meter while talking to find the sweet spot."/>
 
                     <Grid Margin="0,0,0,4">
                         <Grid.ColumnDefinitions>
@@ -167,7 +171,7 @@
                             ValueChanged="OnReductionChanged"/>
                     <TextBlock TextWrapping="Wrap" FontSize="11"
                                Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,0"
-                               Text="Mic volume when not speaking. Lower values = quieter background noise but may not detect speech on some mics. Higher values = more reliable detection but more background noise leaks through. 20% works well for most laptop mics."/>
+                               Text="Mic volume while you're not speaking. Lower = less background noise but the gate may struggle to detect your voice. Higher = gate detects speech more easily but more noise leaks. Start at 20% — if the gate doesn't reopen when you speak, increase it. If you hear too much noise, decrease it."/>
                 </StackPanel>
             </Border>
 

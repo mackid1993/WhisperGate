@@ -12,7 +12,9 @@ public class NoiseGateEngine
     private float _savedVolume = 1f;
     private bool _gateIsOpen = true;
     private double _lastSpeechTime;
+    private double _lastStateChange;
     private readonly double _holdTimeMs = 600;
+    private const double MinStateChangeMs = 500; // prevent oscillation
 
     private const float GatedVolume = 0.05f; // 5% floor
     private const float OpenVolume = 1.0f;   // 100% when speaking
@@ -92,9 +94,10 @@ public class NoiseGateEngine
             {
                 _lastSpeechTime = now;
             }
-            else if ((now - _lastSpeechTime) > _holdTimeMs)
+            else if ((now - _lastSpeechTime) > _holdTimeMs && (now - _lastStateChange) > MinStateChangeMs)
             {
                 _gateIsOpen = false;
+                _lastStateChange = now;
                 SetVolume(GatedVolume);
             }
         }
@@ -104,12 +107,11 @@ public class NoiseGateEngine
             // Shift the threshold down by that amount so voice still triggers it.
             // 20*log10(0.05) = -26.02, minus 6dB hysteresis = -32dB shift.
             float openThreshold = threshold - 32;
-            if (db >= openThreshold)
+            if (db >= openThreshold && (now - _lastStateChange) > MinStateChangeMs)
             {
                 _gateIsOpen = true;
-                // Set lastSpeechTime to now + holdTime so the gate
-                // can't close until the volume change takes effect
                 _lastSpeechTime = now + _holdTimeMs;
+                _lastStateChange = now;
                 SetVolume(OpenVolume);
             }
         }

@@ -4,6 +4,22 @@ using NAudio.Wave;
 
 namespace WhisperGate;
 
+/// WasapiCapture subclass that fixes exclusive mode.
+/// NAudio 2.2.1 passes AutoConvertPcm|SrcDefaultQuality flags in exclusive mode,
+/// which WASAPI rejects. This override returns 0 for exclusive mode.
+internal class FixedWasapiCapture : WasapiCapture
+{
+    public FixedWasapiCapture(MMDevice device, bool useEventSync, int bufferMs = 100)
+        : base(device, useEventSync, bufferMs) { }
+
+    protected override AudioClientStreamFlags GetAudioClientStreamFlags()
+    {
+        return ShareMode == AudioClientShareMode.Exclusive
+            ? 0
+            : base.GetAudioClientStreamFlags();
+    }
+}
+
 public class NoiseGateEngine
 {
     private readonly Settings _settings;
@@ -14,10 +30,7 @@ public class NoiseGateEngine
     private float _reductionFactor = 0.30f;
     private readonly double _holdTimeMs = 300;
 
-    // Shared mode capture (normal operation)
     private WaveInEvent? _sharedCapture;
-
-    // Exclusive mode capture (true silence for other apps)
     private WasapiCapture? _exclusiveCapture;
     private readonly object _modeLock = new();
 
@@ -57,7 +70,7 @@ public class NoiseGateEngine
         catch (Exception ex)
         {
             LastError = _settings.ExclusiveModeEnabled
-                ? "Exclusive mode failed — your audio device may not support it. Disable Exclusive Mode and try again."
+                ? $"Exclusive mode failed: {ex.Message}"
                 : ex.Message;
             DisengageGate();
         }
@@ -115,8 +128,22 @@ public class NoiseGateEngine
         }
         else
         {
-            // Same as Mac: threshold - 6dB hysteresis
-            if (db >= threshold - 6)
+            // Open threshold: scale hysteresis with actual volume reduction.
+            // Original design: 10dB for 30% reduction + 4dB hysteresis = threshold-6.
+            // Dynamic: reductionDB (negative) + 4dB hysteresis.
+            // Exclusive mode: capture is at full volume, just use threshold-6.
+            float openThreshold;
+            if (_settings.ExclusiveModeEnabled)
+            {
+                openThreshold = threshold - 6;
+            }
+            else
+            {
+                float reductionDB = (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
+                openThreshold = threshold + reductionDB + 4;
+            }
+
+            if (db >= openThreshold)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;
@@ -141,7 +168,7 @@ public class NoiseGateEngine
         }
     }
 
-    // ---- Shared mode (WaveInEvent) ----
+    // ---- Shared mode ----
 
     private void StartSharedCapture()
     {
@@ -169,22 +196,23 @@ public class NoiseGateEngine
         OnAudioData(ComputeDB(e.Buffer, e.BytesRecorded));
     }
 
-    // ---- Exclusive mode (WasapiCapture) ----
+    // ---- Exclusive mode ----
 
     private void StartExclusiveCapture()
     {
         if (_exclusiveCapture != null || _device == null) return;
         try
         {
-            // Use push mode with 50ms buffer — same as the working original
-            _exclusiveCapture = new WasapiCapture(_device, false, 50);
-            _exclusiveCapture.ShareMode = AudioClientShareMode.Exclusive;
-            _exclusiveCapture.DataAvailable += OnExclusiveData;
-            _exclusiveCapture.StartRecording();
+            // Use FixedWasapiCapture to avoid NAudio's broken exclusive mode flags.
+            // Event-driven (useEventSync=true) as required by WASAPI exclusive mode.
+            var capture = new FixedWasapiCapture(_device, true, 10);
+            capture.ShareMode = AudioClientShareMode.Exclusive;
+            capture.DataAvailable += OnExclusiveData;
+            capture.StartRecording();
+            _exclusiveCapture = capture;
         }
         catch
         {
-            // Exclusive mode not supported — fall back to shared with volume floor
             _exclusiveCapture = null;
             LastError = "Exclusive mode failed — falling back to volume reduction.";
             StartSharedCapture();

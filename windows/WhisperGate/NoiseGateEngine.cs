@@ -101,9 +101,10 @@ public class NoiseGateEngine
         }
         else
         {
-            // At 5% volume, signal drops significantly. Add extra margin
-            // beyond the theoretical 26dB to account for non-linear mic behavior.
-            float openThreshold = threshold - 40;
+            // Theoretical volume drop: 20*log10(GatedVolume).
+            // Multiply by 1.5 to account for non-linear mic behavior at low volumes.
+            float volumeDropDB = (float)(1.5 * 20 * Math.Log10(GatedVolume));
+            float openThreshold = threshold + volumeDropDB;
             if (db >= openThreshold && (now - _lastStateChange) > MinStateChangeMs)
             {
                 _gateIsOpen = true;

@@ -61,6 +61,8 @@ public partial class SettingsWindow : Window
             StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E));
             LevelFill.Width = 0;
         }
+
+        GateStatus.Text = engine.StatusMessage ?? "";
     }
 
     private void OnThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

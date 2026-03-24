@@ -178,12 +178,8 @@ public class NoiseGateEngine
     private void StartExclusiveCapture()
     {
         if (_exclusiveCapture != null || _device == null) return;
-        // Query the device's minimum period for exclusive mode
-        _device.AudioClient.GetDevicePeriod(out _, out long minPeriod);
-        int bufferMs = Math.Max((int)(minPeriod / 10000), 1);
-        _exclusiveCapture = new WasapiCapture(_device, true, bufferMs);
+        _exclusiveCapture = new WasapiCapture(_device, true);
         _exclusiveCapture.ShareMode = AudioClientShareMode.Exclusive;
-        // Use the device's native mix format
         _exclusiveCapture.WaveFormat = _device.AudioClient.MixFormat;
         _exclusiveFormat = _exclusiveCapture.WaveFormat;
         _exclusiveCapture.DataAvailable += (_, e) =>

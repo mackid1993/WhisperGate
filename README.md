@@ -9,22 +9,53 @@ A lightweight noise gate for [superwhisper](https://superwhisper.com) dictation.
 3. **Stop speaking** — the gate closes after a brief hold, silencing background noise
 4. **Release the hotkey (or press Escape)** — mic returns to normal
 
-### Virtual Mic (macOS)
+## Platform Architecture
 
-WhisperGate includes an optional virtual audio driver that creates a **"WhisperGate Mic"** input device. When the gate is closed, the virtual mic outputs **true silence** (zero bytes) — completely eliminating STT hallucinations from background noise.
+WhisperGate uses different architectures on macOS and Windows due to fundamental platform differences in audio APIs.
 
-Without the virtual mic, WhisperGate falls back to reducing your system mic volume, which can still leak audio on Mac (volume 0 leaks ~20dB on macOS).
+### macOS — Virtual Mic Driver (True Silence)
+
+WhisperGate includes a virtual audio driver that creates a **"WhisperGate Mic"** input device. This is a **feedforward** design — the detection path is completely independent from the output:
+
+- WhisperGate captures from the real mic at full volume (always)
+- Gate open → raw audio passes to the virtual mic
+- Gate closed → virtual mic outputs pure silence (zero bytes)
+- superwhisper reads from "WhisperGate Mic" and gets perfectly clean audio
+
+This is possible because Apple provides `AudioServerPlugin` — a user-space API for creating virtual audio devices. No kernel code, no driver signing certificates required.
+
+### Windows — Volume Control with Compensated Threshold
+
+Windows does not have an equivalent to macOS's AudioServerPlugin. Virtual audio devices on Windows require kernel-mode drivers with code signing certificates ($200+/year). Every alternative was explored and ruled out:
+
+- **WASAPI Exclusive Mode** — NAudio's implementation is broken for exclusive capture
+- **Per-app capture volume** — silences ALL capture on the device, not just the target app
+- **Audio Processing Objects** — per-device, not per-app; also silences our detection
+- **Endpoint mute** — same result as per-app volume
+
+Instead, WhisperGate uses **system volume control** — a feedback topology where the detection capture is affected by the gate's own volume changes. This requires:
+
+- A configurable **gated volume** floor (default 20%) so the mic still picks up enough signal for detection
+- An automatically **compensated open threshold** that accounts for the volume reduction
+- **Instant opening** (no delay) so speech comes through immediately
+- A **smoothed close** transition to avoid harsh audio cutoffs
+- A **debounce** on closing to prevent oscillation from the volume feedback loop
+
+When you speak, the mic volume jumps to 100%. When you stop, it drops to the gated volume. Your original volume is restored when you stop dictating.
 
 ## Features
 
 - Syncs hotkeys directly from superwhisper preferences (Push to Talk + Toggle Recording)
 - **Virtual Mic Driver** (macOS) — true silence when gated, no hallucinations
+- **Smart Volume Gate** (Windows) — compensated threshold, smooth transitions
 - Threshold slider — set it just above your background noise level
-- Gated Volume slider — control mic reduction in volume fallback mode
+- Gated Volume slider (Windows) — tune for your mic's sensitivity
 - Escape key cancels dictation (only intercepted when gate is active)
 - Near-zero CPU when idle — mic only active during dictation
 - System tray / menu bar icon shows gate state
 - Start at login option
+- Single instance enforcement (Windows)
+- Sleep/wake hotkey re-registration (Windows)
 
 ---
 
@@ -106,24 +137,17 @@ WhisperGate launches silently to the system tray. Double-click the tray icon or 
 
 Shortcuts are automatically synced from superwhisper's preferences. Click **Sync** in settings if you change your superwhisper shortcuts.
 
-> **Note:** No virtual mic driver is needed on Windows. Unlike macOS where volume 0 still leaks ~20dB of audio, Windows delivers true silence at volume 0. The volume-based gate already provides clean silence when the gate is closed, so there's nothing for STT to hallucinate on.
-
 ---
 
 ## Settings
 
-### Threshold
-Controls how loud audio needs to be to open the gate (let your voice through).
-- **Lower** (toward -60 dB): less filtering, gate opens more easily
-- **Higher** (toward -20 dB): more filtering, only louder speech opens the gate
+### Threshold (both platforms)
+Controls when audio passes through. Start at -40 dB and adjust:
+- If the gate **doesn't open** when you speak → move left (more sensitive)
+- If **background noise leaks** through → move right (less sensitive)
 
-Set it just above your background noise level.
-
-### Gated Volume (volume fallback mode only)
-Controls how much the mic volume is reduced when you're not speaking. Only visible when the virtual mic driver is not installed.
-- **0%**: mic fully silenced when gating (most aggressive)
-- **30%**: gentle reduction (default)
-- **100%**: no reduction at all
+### Gated Volume (Windows only, 5% to 50%)
+Mic volume while you're not speaking. Lower = less background noise but the gate may struggle to detect your voice. Higher = easier detection but more noise leaks. **Start at 20%** — increase if the gate doesn't reopen when you speak, decrease if you hear too much noise.
 
 ### Virtual Mic Driver (macOS only)
 Toggle in Settings to install or remove the virtual audio driver. When installed, the Gated Volume slider is hidden — the gate uses chunk replacement (true silence) instead of volume reduction.
@@ -144,9 +168,7 @@ Since WhisperGate is not signed with an Apple Developer certificate, macOS will 
 6. Click **Open Anyway**
 7. macOS will ask one more time — click **Open**
 
-You only need to do this once. After that, WhisperGate will open normally.
-
-Alternatively, you can bypass Gatekeeper from Terminal:
+You only need to do this once. Alternatively, bypass from Terminal:
 ```bash
 xattr -cr /Applications/WhisperGate.app
 ```
@@ -160,9 +182,7 @@ Since WhisperGate is not signed with a code signing certificate, Windows SmartSc
 3. Click **More info**
 4. Click **Run anyway**
 
-You only need to do this once. After that, Windows will remember your choice.
-
-If you prefer, you can right-click the exe > **Properties** > check **Unblock** > **OK** before running.
+You only need to do this once. Alternatively, right-click the exe > **Properties** > check **Unblock** > **OK** before running.
 
 ---
 

@@ -93,9 +93,6 @@ public class NoiseGateEngine
             if (db >= threshold)
             {
                 _lastSpeechTime = now;
-                // Always force full volume while speaking
-                if (!_settings.ExclusiveModeEnabled)
-                    SetVolume(1.0f);
             }
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {

@@ -17,7 +17,6 @@ public class Settings
     public float Threshold { get; set; } = -40f;
     public float ReductionPercent { get; set; } = 30f;
     public bool ExclusiveModeEnabled { get; set; }
-    public bool ForceMaxVolume { get; set; }
     public bool StartAtLogin { get; set; }
     public string PushToTalkDisplay { get; set; } = "Not Set";
     public string ToggleRecordingDisplay { get; set; } = "Not Set";

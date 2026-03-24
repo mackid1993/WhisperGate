@@ -55,7 +55,7 @@ public class NoiseGateEngine
             else
             {
                 StartSharedCapture();
-                SetVolume(_savedVolume * _reductionFactor);
+                SetVolume(_reductionFactor);
             }
         }
         catch (Exception ex)
@@ -93,7 +93,8 @@ public class NoiseGateEngine
             if (db >= threshold)
             {
                 _lastSpeechTime = now;
-                if (_settings.ForceMaxVolume && !_settings.ExclusiveModeEnabled)
+                // Always force full volume while speaking
+                if (!_settings.ExclusiveModeEnabled)
                     SetVolume(1.0f);
             }
             else if ((now - _lastSpeechTime) > _holdTimeMs)
@@ -113,14 +114,14 @@ public class NoiseGateEngine
                 }
                 else
                 {
-                    SetVolume(_savedVolume * _reductionFactor);
+                    SetVolume(_reductionFactor);
                 }
             }
         }
         else
         {
-            // Open threshold must account for volume reduction on the captured signal.
-            // Voice at full volume = threshold. At reduced volume = threshold + reductionDB.
+            // Volume drops from 1.0 (open) to _reductionFactor (closed).
+            // Captured signal is lower by 20*log10(reductionFactor).
             // Subtract 4dB margin so the gate opens reliably.
             float openThreshold;
             if (_settings.ExclusiveModeEnabled)
@@ -129,8 +130,8 @@ public class NoiseGateEngine
             }
             else
             {
-                float reductionDB = (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
-                openThreshold = threshold + reductionDB - 4;
+                float dropDB = (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
+                openThreshold = threshold + dropDB - 4;
             }
 
             if (db >= openThreshold)
@@ -145,14 +146,14 @@ public class NoiseGateEngine
                         {
                             if (!_gateIsOpen || _device == null) return;
                             StopExclusiveCapture();
-                            SetVolume(_settings.ForceMaxVolume ? 1.0f : _savedVolume);
+                            SetVolume(1.0f);
                             StartSharedCapture();
                         }
                     });
                 }
                 else
                 {
-                    SetVolume(_settings.ForceMaxVolume ? 1.0f : _savedVolume);
+                    SetVolume(1.0f);
                 }
             }
         }

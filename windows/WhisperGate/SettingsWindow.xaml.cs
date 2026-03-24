@@ -34,7 +34,6 @@ public partial class SettingsWindow : Window
         ReductionValue.Text = $"{_settings.ReductionPercent}%";
         ExclusiveModeCheck.IsChecked = _settings.ExclusiveModeEnabled;
         GatedVolumePanel.Visibility = _settings.ExclusiveModeEnabled ? Visibility.Collapsed : Visibility.Visible;
-        ForceMaxVolumeCheck.IsChecked = _settings.ForceMaxVolume;
         StartAtLoginCheck.IsChecked = _settings.StartAtLogin;
     }
 
@@ -101,13 +100,6 @@ public partial class SettingsWindow : Window
         App.Instance.Hotkeys.Unregister();
         App.Instance.Hotkeys.Register();
         RefreshDisplay();
-    }
-
-    private void OnForceMaxVolumeChanged(object sender, RoutedEventArgs e)
-    {
-        if (_settings == null) return;
-        _settings.ForceMaxVolume = ForceMaxVolumeCheck.IsChecked == true;
-        _settings.Save();
     }
 
     private void OnExclusiveModeChanged(object sender, RoutedEventArgs e)

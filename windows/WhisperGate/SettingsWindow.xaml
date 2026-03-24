@@ -188,8 +188,9 @@
                                   Checked="OnExclusiveModeChanged" Unchecked="OnExclusiveModeChanged"
                                   VerticalAlignment="Center"/>
                     </Grid>
-                    <TextBlock Text="Uses WASAPI exclusive mode for true silence when gated. May briefly interrupt other apps using the mic."
+                    <TextBlock Text="Uses WASAPI exclusive mode for true silence when gated. Other apps cannot use the mic while the gate is closed. Not all audio devices support this — if it fails, disable this option."
                                FontSize="11" Foreground="{StaticResource FgTertiaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="ExclusiveModeError" Text="" FontSize="11" Foreground="#FFE05050" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
                 </StackPanel>
             </Border>
 

@@ -27,6 +27,7 @@ public class NoiseGateEngine
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
     public bool IsEngaged => _sharedCapture != null || _exclusiveCapture != null;
+    public string? LastError { get; private set; }
 
     public NoiseGateEngine(Settings settings) => _settings = settings;
 
@@ -58,9 +59,9 @@ public class NoiseGateEngine
         }
         catch (Exception ex)
         {
-            try { System.IO.File.WriteAllText(
-                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "whispergate_error.txt"),
-                ex.ToString()); } catch { }
+            LastError = _settings.ExclusiveModeEnabled
+                ? "Exclusive mode failed — your audio device may not support it. Disable Exclusive Mode and try again."
+                : ex.Message;
             DisengageGate();
         }
     }
@@ -119,22 +120,8 @@ public class NoiseGateEngine
         }
         else
         {
-            // Open threshold must account for the volume drop between open and closed states.
-            // Exclusive mode: capture bypasses volume, so no compensation.
-            // Shared mode: signal drops by the ratio of gated/open volume.
-            float openThreshold;
-            if (_settings.ExclusiveModeEnabled)
-            {
-                openThreshold = threshold - 6;
-            }
-            else
-            {
-                float gatedVol = _savedVolume * _reductionFactor;
-                float openVol = _settings.ForceMaxVolume ? 1.0f : _savedVolume;
-                float dropDB = (float)(20 * Math.Log10(Math.Max(gatedVol / openVol, 0.001)));
-                openThreshold = threshold + dropDB - 6;
-            }
-            if (db >= openThreshold)
+            // Same as Mac: threshold - 6dB hysteresis
+            if (db >= threshold - 6)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;

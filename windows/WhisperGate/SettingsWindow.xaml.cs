@@ -65,6 +65,16 @@ public partial class SettingsWindow : Window
             StatusDetail.Text = "Waiting for superwhisper hotkey";
             StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E)); // gray
             LevelFill.Width = 0;
+
+            if (engine.LastError != null)
+            {
+                ExclusiveModeError.Text = engine.LastError;
+                ExclusiveModeError.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ExclusiveModeError.Visibility = Visibility.Collapsed;
+            }
         }
     }
 

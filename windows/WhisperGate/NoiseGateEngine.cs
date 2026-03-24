@@ -119,7 +119,11 @@ public class NoiseGateEngine
         }
         else
         {
-            if (db >= threshold - 6)
+            // Account for volume reduction: captured signal is quieter by 20*log10(reductionFactor)
+            // Add that to the hysteresis so the gate can actually open
+            float reductionDB = _settings.ExclusiveModeEnabled ? 0 :
+                (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
+            if (db >= threshold + reductionDB - 6)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;

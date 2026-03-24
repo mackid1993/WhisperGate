@@ -87,7 +87,7 @@ public class NoiseGateEngine
         if (shouldOpen != _gateIsOpen)
         {
             _gateIsOpen = shouldOpen;
-            SetVolume(shouldOpen ? _savedVolume : 0f);
+            SetVolume(shouldOpen ? 1f : 0f);
         }
     }
 

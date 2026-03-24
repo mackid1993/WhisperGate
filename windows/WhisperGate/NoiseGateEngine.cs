@@ -194,17 +194,35 @@ public class NoiseGateEngine
         try
         {
             _exclusiveClient = _device.AudioClient;
-            _exclusiveFormat = _exclusiveClient.MixFormat;
 
-            // Initialize: exclusive, event-driven, no conversion flags
-            long bufferDuration = 100 * 10000; // 10ms in 100ns units
-            _exclusiveClient.Initialize(
-                AudioClientShareMode.Exclusive,
-                AudioClientStreamFlags.EventCallback,
-                bufferDuration,
-                bufferDuration,
-                _exclusiveFormat,
-                Guid.Empty);
+            // Find a format the device supports in exclusive mode
+            _exclusiveFormat = FindExclusiveFormat(_exclusiveClient);
+            if (_exclusiveFormat == null)
+                throw new InvalidOperationException("No exclusive format supported");
+
+            // Try to initialize — handle buffer alignment errors
+            long bufferDuration = 200 * 10000; // 20ms in 100ns units
+            try
+            {
+                _exclusiveClient.Initialize(
+                    AudioClientShareMode.Exclusive,
+                    AudioClientStreamFlags.EventCallback,
+                    bufferDuration, bufferDuration,
+                    _exclusiveFormat, Guid.Empty);
+            }
+            catch (COMException ex) when (ex.ErrorCode == unchecked((int)0x88890019))
+            {
+                // AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED — get aligned size and retry
+                int aligned = _exclusiveClient.BufferSize;
+                bufferDuration = (long)(10000000.0 / _exclusiveFormat.SampleRate * aligned + 0.5);
+                _exclusiveClient.Dispose();
+                _exclusiveClient = _device.AudioClient;
+                _exclusiveClient.Initialize(
+                    AudioClientShareMode.Exclusive,
+                    AudioClientStreamFlags.EventCallback,
+                    bufferDuration, bufferDuration,
+                    _exclusiveFormat, Guid.Empty);
+            }
 
             var eventHandle = new EventWaitHandle(false, EventResetMode.AutoReset);
             _exclusiveClient.SetEventHandle(eventHandle.SafeWaitHandle.DangerousGetHandle());
@@ -251,13 +269,52 @@ public class NoiseGateEngine
             { IsBackground = true, Priority = ThreadPriority.Highest };
             _exclusiveThread.Start();
         }
-        catch
+        catch (Exception ex)
         {
             StopExclusiveCapture();
-            LastError = "Exclusive mode failed — falling back to volume reduction.";
+            LastError = $"Exclusive mode failed: {ex.Message}";
             StartSharedCapture();
             SetVolume(_savedVolume * _reductionFactor);
         }
+    }
+
+    private static WaveFormat? FindExclusiveFormat(AudioClient client)
+    {
+        var mix = client.MixFormat;
+
+        // Try the mix format first
+        if (client.IsFormatSupported(AudioClientShareMode.Exclusive, mix))
+            return mix;
+
+        // Try common formats — both WaveFormatExtensible and plain WaveFormat
+        // Some drivers accept one but not the other
+        int[] rates = { 48000, 44100 };
+        int[] bits = { 16, 24, 32 };
+        int[] channels = { mix.Channels, 1, 2 };
+
+        foreach (int rate in rates)
+        {
+            foreach (int bit in bits)
+            {
+                foreach (int ch in channels)
+                {
+                    // Try plain WaveFormat
+                    var plain = new WaveFormat(rate, bit, ch);
+                    if (client.IsFormatSupported(AudioClientShareMode.Exclusive, plain))
+                        return plain;
+
+                    // Try IEEE float
+                    if (bit == 32)
+                    {
+                        var ieee = WaveFormat.CreateIeeeFloatWaveFormat(rate, ch);
+                        if (client.IsFormatSupported(AudioClientShareMode.Exclusive, ieee))
+                            return ieee;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     private void StopExclusiveCapture()

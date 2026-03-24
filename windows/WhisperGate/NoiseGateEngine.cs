@@ -9,87 +9,67 @@ public class NoiseGateEngine
 {
     private readonly Settings _settings;
     private MMDevice? _device;
-    private WaveInEvent? _waveIn;
+    private WasapiCapture? _capture;
     private bool _gateIsOpen = true;
     private double _lastSpeechTime;
     private readonly double _holdTimeMs = 300;
 
-    // Per-app volume control for superwhisper
-    private SimpleAudioVolume? _superwhisperVolume;
-    private int _superwhisperPid;
+    // Per-app volume control for superwhisper's capture session
+    private SimpleAudioVolume? _swVolume;
+    private int _swPid;
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
-    public bool IsEngaged => _waveIn != null;
+    public bool IsEngaged => _capture != null;
     public string? StatusMessage { get; private set; }
 
     public NoiseGateEngine(Settings settings) => _settings = settings;
 
     public void EngageGate()
     {
-        if (_waveIn != null) return;
+        if (_capture != null) return;
         StatusMessage = null;
         try
         {
             var enumerator = new MMDeviceEnumerator();
             _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
 
-            // Find superwhisper's capture session
-            _superwhisperVolume = FindSuperwhisperSession(_device, out _superwhisperPid);
-            if (_superwhisperVolume == null)
-                StatusMessage = "superwhisper not detected — make sure it is running and using the mic.";
-            else
-                StatusMessage = $"Detected superwhisper (PID {_superwhisperPid}) — controlling its mic volume.";
+            // Find superwhisper
+            _swVolume = FindSuperwhisperSession(_device, out _swPid);
+            StatusMessage = _swVolume != null
+                ? $"Detected superwhisper (PID {_swPid})"
+                : "superwhisper not detected — start a dictation first, then re-engage.";
 
-            _waveIn = new WaveInEvent
-            {
-                WaveFormat = new WaveFormat(48000, 16, 1),
-                BufferMilliseconds = 50
-            };
-            _waveIn.DataAvailable += OnDataAvailable;
-            _waveIn.StartRecording();
+            // Use WasapiCapture in shared mode for our detection
+            _capture = new WasapiCapture(_device, false, 50);
+            _capture.DataAvailable += OnDataAvailable;
+            _capture.StartRecording();
 
-            // Start gated — superwhisper hears silence until speech detected
+            // Start gated
             _gateIsOpen = false;
             _lastSpeechTime = 0;
-            if (_superwhisperVolume != null)
-                SetSuperwhisperVolume(0f);
-            else
-                StatusMessage = "superwhisper session not found — start a dictation in superwhisper first, then re-engage.";
+            SetSW(0f);
         }
         catch { DisengageGate(); }
     }
 
     public void DisengageGate()
     {
-        if (_waveIn != null)
+        if (_capture != null)
         {
-            _waveIn.StopRecording();
-            _waveIn.DataAvailable -= OnDataAvailable;
-            _waveIn.Dispose();
-            _waveIn = null;
+            try { _capture.StopRecording(); } catch { }
+            _capture.Dispose();
+            _capture = null;
         }
-        SetSuperwhisperVolume(1f);
-        _superwhisperVolume = null;
+        SetSW(1f);
+        _swVolume = null;
         _device = null;
         _gateIsOpen = true;
     }
 
-    // ---- Gate logic (identical to Mac) ----
-
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        int samples = e.BytesRecorded / 2;
-        if (samples == 0) return;
-
-        double sum = 0;
-        for (int i = 0; i < e.BytesRecorded; i += 2)
-        {
-            short s = BitConverter.ToInt16(e.Buffer, i);
-            double n = s / 32768.0;
-            sum += n * n;
-        }
-        float db = sum > 0 ? (float)(10 * Math.Log10(sum / samples)) : -160;
+        float db = ComputeDB(e.Buffer, e.BytesRecorded, _capture?.WaveFormat);
         LatestDB = db;
 
         double now = Environment.TickCount64;
@@ -98,53 +78,48 @@ public class NoiseGateEngine
         if (_gateIsOpen)
         {
             if (db >= threshold)
-            {
                 _lastSpeechTime = now;
-            }
             else if ((now - _lastSpeechTime) > _holdTimeMs)
             {
                 _gateIsOpen = false;
-                SetSuperwhisperVolume(0f);
+                SetSW(0f);
             }
         }
         else
         {
-            // Same as Mac: threshold - 6dB hysteresis
             if (db >= threshold - 6)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;
-                SetSuperwhisperVolume(1f);
+                SetSW(1f);
             }
         }
     }
 
-    // ---- superwhisper session control ----
-
-    private void SetSuperwhisperVolume(float vol)
+    private void SetSW(float vol)
     {
-        if (_superwhisperVolume == null) return;
-        try { _superwhisperVolume.Volume = vol; } catch { }
+        if (_swVolume == null) return;
+        try { _swVolume.Volume = vol; } catch { }
     }
 
-    private static SimpleAudioVolume? FindSuperwhisperSession(MMDevice captureDevice, out int pid)
+    private static SimpleAudioVolume? FindSuperwhisperSession(MMDevice dev, out int pid)
     {
         pid = 0;
         try
         {
-            var sessions = captureDevice.AudioSessionManager.Sessions;
+            var sessions = dev.AudioSessionManager.Sessions;
             for (int i = 0; i < sessions.Count; i++)
             {
-                var session = sessions[i];
+                var s = sessions[i];
                 try
                 {
-                    int p = (int)session.GetProcessID;
+                    int p = (int)s.GetProcessID;
                     if (p == 0) continue;
                     var proc = Process.GetProcessById(p);
                     if (proc.ProcessName.Contains("superwhisper", StringComparison.OrdinalIgnoreCase))
                     {
                         pid = p;
-                        return session.SimpleAudioVolume;
+                        return s.SimpleAudioVolume;
                     }
                 }
                 catch { }
@@ -152,5 +127,35 @@ public class NoiseGateEngine
         }
         catch { }
         return null;
+    }
+
+    private static float ComputeDB(byte[] buf, int bytes, WaveFormat? fmt)
+    {
+        if (fmt == null) return -160;
+
+        if (fmt.BitsPerSample == 32)
+        {
+            int n = bytes / 4;
+            if (n == 0) return -160;
+            double sum = 0;
+            for (int i = 0; i < bytes; i += 4)
+            {
+                double s = BitConverter.ToSingle(buf, i);
+                sum += s * s;
+            }
+            return sum > 0 ? (float)(10 * Math.Log10(sum / n)) : -160;
+        }
+        else
+        {
+            int n = bytes / 2;
+            if (n == 0) return -160;
+            double sum = 0;
+            for (int i = 0; i < bytes; i += 2)
+            {
+                double s = BitConverter.ToInt16(buf, i) / 32768.0;
+                sum += s * s;
+            }
+            return sum > 0 ? (float)(10 * Math.Log10(sum / n)) : -160;
+        }
     }
 }

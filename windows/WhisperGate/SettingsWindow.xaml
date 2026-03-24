@@ -172,7 +172,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- Exclusive Mode -->
+            <!-- True Silence -->
             <Border Background="{StaticResource CardBrush}" CornerRadius="6"
                     Padding="14,10" Margin="0,12,0,0"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
@@ -182,15 +182,15 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="Exclusive Mode (True Silence)" FontSize="13" Foreground="{StaticResource FgBrush}"
+                        <TextBlock Text="True Silence" FontSize="13" Foreground="{StaticResource FgBrush}"
                                    VerticalAlignment="Center"/>
-                        <CheckBox x:Name="ExclusiveModeCheck" Grid.Column="1"
-                                  Checked="OnExclusiveModeChanged" Unchecked="OnExclusiveModeChanged"
+                        <CheckBox x:Name="TrueSilenceCheck" Grid.Column="1"
+                                  Checked="OnTrueSilenceChanged" Unchecked="OnTrueSilenceChanged"
                                   VerticalAlignment="Center"/>
                     </Grid>
-                    <TextBlock Text="Uses WASAPI exclusive mode for true silence when gated. Other apps cannot use the mic while the gate is closed. Not all audio devices support this — if it fails, disable this option."
+                    <TextBlock Text="Silences superwhisper's mic input directly when gated, instead of reducing system volume. Requires superwhisper to be running."
                                FontSize="11" Foreground="{StaticResource FgTertiaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                    <TextBlock x:Name="ExclusiveModeError" Text="" FontSize="11" Foreground="#FFE05050" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="TrueSilenceStatus" Text="" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
                 </StackPanel>
             </Border>
 

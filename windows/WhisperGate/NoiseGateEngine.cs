@@ -56,16 +56,16 @@ public class NoiseGateEngine
             if (_settings.ExclusiveModeEnabled)
             {
                 // Per-app silence: find superwhisper's capture session
-                _superwhisperVolume = FindSuperwhisperSession(_device);
+                _superwhisperVolume = FindSuperwhisperSession(_device, out var msg);
                 if (_superwhisperVolume != null)
                 {
                     _superwhisperVolume.Volume = 0f;
-                    StatusMessage = "Detected superwhisper — true silence mode active.";
+                    StatusMessage = msg;
                 }
                 else
                 {
-                    StatusMessage = "Waiting for superwhisper...";
-                    LastError = "Could not find superwhisper audio session. Make sure superwhisper is running.";
+                    StatusMessage = "Searching for superwhisper...";
+                    LastError = "superwhisper not detected. Make sure it is running and using the mic.";
                     // Fall back to system volume
                     SetVolume(Math.Max(_savedVolume * _reductionFactor, 0.001f));
                 }
@@ -121,6 +121,7 @@ public class NoiseGateEngine
         }
         float db = sum > 0 ? (float)(10 * Math.Log10(sum / samples)) : -160;
         LatestDB = db;
+        TryFindSuperwhisper();
 
         double now = Environment.TickCount64;
         float threshold = _settings.Threshold;
@@ -157,8 +158,9 @@ public class NoiseGateEngine
 
     // ---- Find superwhisper's capture session ----
 
-    private static SimpleAudioVolume? FindSuperwhisperSession(MMDevice captureDevice)
+    private static SimpleAudioVolume? FindSuperwhisperSession(MMDevice captureDevice, out string? statusMsg)
     {
+        statusMsg = null;
         try
         {
             var sessionManager = captureDevice.AudioSessionManager;
@@ -175,6 +177,7 @@ public class NoiseGateEngine
                     var proc = Process.GetProcessById(pid);
                     if (proc.ProcessName.Contains("superwhisper", StringComparison.OrdinalIgnoreCase))
                     {
+                        statusMsg = $"Detected superwhisper (PID {pid}) — true silence mode active.";
                         return session.SimpleAudioVolume;
                     }
                 }
@@ -195,10 +198,10 @@ public class NoiseGateEngine
         double now = Environment.TickCount64;
         if (now - _lastSessionSearch < 2000) return; // search every 2s max
         _lastSessionSearch = now;
-        _superwhisperVolume = FindSuperwhisperSession(_device);
+        _superwhisperVolume = FindSuperwhisperSession(_device, out var msg);
         if (_superwhisperVolume != null)
         {
-            StatusMessage = "Detected superwhisper — true silence mode active.";
+            StatusMessage = msg;
             LastError = null;
             if (!_gateIsOpen) try { _superwhisperVolume.Volume = 0f; } catch { }
         }

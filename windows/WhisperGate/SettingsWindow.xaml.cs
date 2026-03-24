@@ -32,7 +32,7 @@ public partial class SettingsWindow : Window
         ThresholdValue.Text = $"{_settings.Threshold} dB";
         ReductionSlider.Value = _settings.ReductionPercent;
         ReductionValue.Text = $"{_settings.ReductionPercent}%";
-        ExclusiveModeCheck.IsChecked = _settings.ExclusiveModeEnabled;
+        TrueSilenceCheck.IsChecked = _settings.ExclusiveModeEnabled;
         GatedVolumePanel.Visibility = _settings.ExclusiveModeEnabled ? Visibility.Collapsed : Visibility.Visible;
         StartAtLoginCheck.IsChecked = _settings.StartAtLogin;
     }
@@ -47,13 +47,13 @@ public partial class SettingsWindow : Window
             {
                 StatusText.Text = "Full Volume";
                 StatusDetail.Text = "Your voice is passing through";
-                StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6C, 0xCB, 0x5F)); // green
+                StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6C, 0xCB, 0x5F));
             }
             else
             {
                 StatusText.Text = "Noise Reduced";
                 StatusDetail.Text = "Mic level reduced — filtering noise";
-                StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x38)); // amber
+                StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x38));
             }
             var norm = Math.Max(0, Math.Min(1, (engine.LatestDB + 80) / 80));
             LevelFill.Width = norm * (ActualWidth - 90);
@@ -62,18 +62,26 @@ public partial class SettingsWindow : Window
         {
             StatusText.Text = "Standby";
             StatusDetail.Text = engine.StatusMessage ?? "Waiting for superwhisper hotkey";
-            StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E)); // gray
+            StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E));
             LevelFill.Width = 0;
+        }
 
-            if (engine.LastError != null)
-            {
-                ExclusiveModeError.Text = engine.LastError;
-                ExclusiveModeError.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                ExclusiveModeError.Visibility = Visibility.Collapsed;
-            }
+        // Show status/error for true silence mode
+        if (engine.StatusMessage != null && _settings.ExclusiveModeEnabled)
+        {
+            TrueSilenceStatus.Text = engine.StatusMessage;
+            TrueSilenceStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0xCB, 0x5F));
+            TrueSilenceStatus.Visibility = Visibility.Visible;
+        }
+        else if (engine.LastError != null && _settings.ExclusiveModeEnabled)
+        {
+            TrueSilenceStatus.Text = engine.LastError;
+            TrueSilenceStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0x50, 0x50));
+            TrueSilenceStatus.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            TrueSilenceStatus.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -102,10 +110,10 @@ public partial class SettingsWindow : Window
         RefreshDisplay();
     }
 
-    private void OnExclusiveModeChanged(object sender, RoutedEventArgs e)
+    private void OnTrueSilenceChanged(object sender, RoutedEventArgs e)
     {
         if (_settings == null) return;
-        _settings.ExclusiveModeEnabled = ExclusiveModeCheck.IsChecked == true;
+        _settings.ExclusiveModeEnabled = TrueSilenceCheck.IsChecked == true;
         GatedVolumePanel.Visibility = _settings.ExclusiveModeEnabled ? Visibility.Collapsed : Visibility.Visible;
         _settings.Save();
     }
@@ -116,7 +124,6 @@ public partial class SettingsWindow : Window
         _settings.StartAtLogin = StartAtLoginCheck.IsChecked == true;
         _settings.Save();
 
-        // Add/remove from Windows startup via registry
         try
         {
             var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(

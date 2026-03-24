@@ -14,12 +14,11 @@ public class NoiseGateEngine
     private float _reductionFactor = 0.30f;
     private readonly double _holdTimeMs = 300;
 
-    // Shared mode capture
+    // Shared mode capture (normal operation)
     private WaveInEvent? _sharedCapture;
 
-    // Exclusive mode capture
+    // Exclusive mode capture (true silence for other apps)
     private WasapiCapture? _exclusiveCapture;
-    private WaveFormat? _exclusiveFormat;
     private readonly object _modeLock = new();
 
     private const float MinGatedVolume = 0.05f;
@@ -34,6 +33,7 @@ public class NoiseGateEngine
     public void EngageGate()
     {
         if (IsEngaged) return;
+        LastError = null;
         try
         {
             var enumerator = new MMDeviceEnumerator();
@@ -46,9 +46,6 @@ public class NoiseGateEngine
 
             if (_settings.ExclusiveModeEnabled)
             {
-                // Exclusive mode: capture at full volume, set system volume to 0
-                // WaveInEvent is NOT used — only WasapiCapture exclusive
-                SetVolume(0);
                 StartExclusiveCapture();
             }
             else
@@ -100,14 +97,12 @@ public class NoiseGateEngine
                 _gateIsOpen = false;
                 if (_settings.ExclusiveModeEnabled)
                 {
-                    // Switch back to exclusive capture, mute system volume
                     System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                     {
                         lock (_modeLock)
                         {
                             if (_gateIsOpen || _device == null) return;
                             StopSharedCapture();
-                            SetVolume(0);
                             StartExclusiveCapture();
                         }
                     });
@@ -127,7 +122,6 @@ public class NoiseGateEngine
                 _lastSpeechTime = now;
                 if (_settings.ExclusiveModeEnabled)
                 {
-                    // Switch to shared capture, restore volume
                     System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                     {
                         lock (_modeLock)
@@ -147,7 +141,7 @@ public class NoiseGateEngine
         }
     }
 
-    // ---- Shared mode ----
+    // ---- Shared mode (WaveInEvent) ----
 
     private void StartSharedCapture()
     {
@@ -157,117 +151,91 @@ public class NoiseGateEngine
             WaveFormat = new WaveFormat(48000, 16, 1),
             BufferMilliseconds = 50
         };
-        _sharedCapture.DataAvailable += (_, e) => OnAudioData(ComputeDB16(e.Buffer, e.BytesRecorded));
+        _sharedCapture.DataAvailable += OnSharedData;
         _sharedCapture.StartRecording();
     }
 
     private void StopSharedCapture()
     {
         if (_sharedCapture == null) return;
-        try { _sharedCapture.StopRecording(); } catch { }
+        _sharedCapture.StopRecording();
+        _sharedCapture.DataAvailable -= OnSharedData;
         _sharedCapture.Dispose();
         _sharedCapture = null;
     }
 
-    // ---- Exclusive mode ----
+    private void OnSharedData(object? sender, WaveInEventArgs e)
+    {
+        OnAudioData(ComputeDB(e.Buffer, e.BytesRecorded));
+    }
+
+    // ---- Exclusive mode (WasapiCapture) ----
 
     private void StartExclusiveCapture()
     {
         if (_exclusiveCapture != null || _device == null) return;
-
-        // Try multiple formats — exclusive mode requires exact match and
-        // often needs WaveFormatExtensible, not plain WaveFormat.
-        var mixFormat = _device.AudioClient.MixFormat;
-        WaveFormat[] candidates = new WaveFormat[]
+        try
         {
-            mixFormat,
-            new WaveFormatExtensible(48000, 16, 2),
-            new WaveFormatExtensible(44100, 16, 2),
-            new WaveFormatExtensible(48000, 16, 1),
-            new WaveFormatExtensible(48000, 32, 2),
-            WaveFormat.CreateIeeeFloatWaveFormat(48000, 2),
-            WaveFormat.CreateIeeeFloatWaveFormat(44100, 2),
-            new WaveFormat(48000, 16, 2),
-            new WaveFormat(44100, 16, 2),
-            new WaveFormat(48000, 16, 1),
-        };
-
-        // Try each format until one works
-        foreach (var fmt in candidates)
-        {
-            try
-            {
-                var capture = new WasapiCapture(_device, true);
-                capture.ShareMode = AudioClientShareMode.Exclusive;
-                capture.WaveFormat = fmt;
-                capture.DataAvailable += (_, e) =>
-                {
-                    if (fmt.BitsPerSample >= 32)
-                        OnAudioData(ComputeDBFloat(e.Buffer, e.BytesRecorded));
-                    else if (fmt.BitsPerSample == 24)
-                        OnAudioData(ComputeDB24(e.Buffer, e.BytesRecorded));
-                    else
-                        OnAudioData(ComputeDB16(e.Buffer, e.BytesRecorded));
-                };
-                capture.StartRecording();
-                _exclusiveCapture = capture;
-                _exclusiveFormat = fmt;
-                return; // success
-            }
-            catch { }
+            // Use push mode with 50ms buffer — same as the working original
+            _exclusiveCapture = new WasapiCapture(_device, false, 50);
+            _exclusiveCapture.ShareMode = AudioClientShareMode.Exclusive;
+            _exclusiveCapture.DataAvailable += OnExclusiveData;
+            _exclusiveCapture.StartRecording();
         }
-
-        throw new InvalidOperationException($"Exclusive mode not supported. Tried {candidates.Length} formats.");
+        catch
+        {
+            // Exclusive mode not supported — fall back to shared with volume floor
+            _exclusiveCapture = null;
+            LastError = "Exclusive mode failed — falling back to volume reduction.";
+            StartSharedCapture();
+            SetVolume(_savedVolume * _reductionFactor);
+        }
     }
 
     private void StopExclusiveCapture()
     {
         if (_exclusiveCapture == null) return;
         try { _exclusiveCapture.StopRecording(); } catch { }
+        _exclusiveCapture.DataAvailable -= OnExclusiveData;
         _exclusiveCapture.Dispose();
         _exclusiveCapture = null;
     }
 
+    private void OnExclusiveData(object? sender, WaveInEventArgs e)
+    {
+        if (_exclusiveCapture?.WaveFormat.BitsPerSample == 32)
+            OnAudioData(ComputeDBFloat(e.Buffer, e.BytesRecorded));
+        else
+            OnAudioData(ComputeDB(e.Buffer, e.BytesRecorded));
+    }
+
     // ---- RMS ----
 
-    private static float ComputeDB16(byte[] buf, int bytes)
+    private static float ComputeDB(byte[] buffer, int bytes)
     {
-        int n = bytes / 2;
-        if (n == 0) return -160;
+        int samples = bytes / 2;
+        if (samples == 0) return -160;
         double sum = 0;
         for (int i = 0; i < bytes; i += 2)
         {
-            double s = BitConverter.ToInt16(buf, i) / 32768.0;
-            sum += s * s;
+            short s = BitConverter.ToInt16(buffer, i);
+            double n = s / 32768.0;
+            sum += n * n;
         }
-        return sum > 0 ? (float)(10 * Math.Log10(sum / n)) : -160;
+        return sum > 0 ? (float)(10 * Math.Log10(sum / samples)) : -160;
     }
 
-    private static float ComputeDB24(byte[] buf, int bytes)
+    private static float ComputeDBFloat(byte[] buffer, int bytes)
     {
-        int n = bytes / 3;
-        if (n == 0) return -160;
-        double sum = 0;
-        for (int i = 0; i + 2 < bytes; i += 3)
-        {
-            int s = (buf[i] | (buf[i + 1] << 8) | ((sbyte)buf[i + 2] << 16));
-            double d = s / 8388608.0;
-            sum += d * d;
-        }
-        return sum > 0 ? (float)(10 * Math.Log10(sum / n)) : -160;
-    }
-
-    private static float ComputeDBFloat(byte[] buf, int bytes)
-    {
-        int n = bytes / 4;
-        if (n == 0) return -160;
+        int samples = bytes / 4;
+        if (samples == 0) return -160;
         double sum = 0;
         for (int i = 0; i < bytes; i += 4)
         {
-            double s = BitConverter.ToSingle(buf, i);
+            float s = BitConverter.ToSingle(buffer, i);
             sum += s * s;
         }
-        return sum > 0 ? (float)(10 * Math.Log10(sum / n)) : -160;
+        return sum > 0 ? (float)(10 * Math.Log10(sum / samples)) : -160;
     }
 
     private void SetVolume(float volume)

@@ -119,13 +119,12 @@ public class NoiseGateEngine
         }
         else
         {
-            // Match Mac logic: compare against full-volume equivalent.
-            // When gated, captured dB is lower by 20*log10(reductionFactor).
-            // Add that back so threshold-6 works the same as Mac.
-            float fullVolumeDB = db;
-            if (!_settings.ExclusiveModeEnabled)
-                fullVolumeDB -= (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
-            if (fullVolumeDB >= threshold - 6)
+            // Open threshold: threshold - 6dB hysteresis - volume reduction in dB.
+            // In exclusive mode, capture is at full volume so no compensation needed.
+            // In shared mode, captured signal is quieter by 20*log10(reductionFactor).
+            float reductionDB = _settings.ExclusiveModeEnabled ? 0f
+                : (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
+            if (db >= threshold + reductionDB - 6)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now;
@@ -178,15 +177,47 @@ public class NoiseGateEngine
     private void StartExclusiveCapture()
     {
         if (_exclusiveCapture != null || _device == null) return;
+
+        // NAudio's WasapiCapture doesn't negotiate exclusive mode properly.
+        // We need to find the format the device actually supports.
+        var audioClient = _device.AudioClient;
+        var mixFormat = audioClient.MixFormat;
+
+        // Try the mix format first, then fall back to common formats
+        WaveFormat? exclusiveFormat = null;
+        WaveFormat[] candidates = new[]
+        {
+            mixFormat,
+            new WaveFormat(48000, 16, 1),
+            new WaveFormat(44100, 16, 1),
+            new WaveFormat(48000, 16, 2),
+            new WaveFormat(44100, 16, 2),
+            WaveFormat.CreateIeeeFloatWaveFormat(48000, 2),
+            WaveFormat.CreateIeeeFloatWaveFormat(44100, 2),
+            WaveFormat.CreateIeeeFloatWaveFormat(48000, 1),
+        };
+
+        foreach (var fmt in candidates)
+        {
+            if (audioClient.IsFormatSupported(AudioClientShareMode.Exclusive, fmt))
+            {
+                exclusiveFormat = fmt;
+                break;
+            }
+        }
+
+        if (exclusiveFormat == null)
+            throw new InvalidOperationException("No supported exclusive mode format found");
+
         _exclusiveCapture = new WasapiCapture(_device, true);
         _exclusiveCapture.ShareMode = AudioClientShareMode.Exclusive;
-        _exclusiveCapture.WaveFormat = _device.AudioClient.MixFormat;
-        _exclusiveFormat = _exclusiveCapture.WaveFormat;
+        _exclusiveCapture.WaveFormat = exclusiveFormat;
+        _exclusiveFormat = exclusiveFormat;
         _exclusiveCapture.DataAvailable += (_, e) =>
         {
-            if (_exclusiveFormat != null && _exclusiveFormat.BitsPerSample >= 32)
+            if (_exclusiveFormat.BitsPerSample >= 32)
                 OnAudioData(ComputeDBFloat(e.Buffer, e.BytesRecorded));
-            else if (_exclusiveFormat != null && _exclusiveFormat.BitsPerSample == 24)
+            else if (_exclusiveFormat.BitsPerSample == 24)
                 OnAudioData(ComputeDB24(e.Buffer, e.BytesRecorded));
             else
                 OnAudioData(ComputeDB16(e.Buffer, e.BytesRecorded));

@@ -1,24 +1,10 @@
 using System;
+using System.Threading;
+using System.Runtime.InteropServices;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace WhisperGate;
-
-/// WasapiCapture subclass that fixes exclusive mode.
-/// NAudio 2.2.1 passes AutoConvertPcm|SrcDefaultQuality flags in exclusive mode,
-/// which WASAPI rejects. This override returns 0 for exclusive mode.
-internal class FixedWasapiCapture : WasapiCapture
-{
-    public FixedWasapiCapture(MMDevice device, bool useEventSync, int bufferMs = 100)
-        : base(device, useEventSync, bufferMs) { }
-
-    protected override AudioClientStreamFlags GetAudioClientStreamFlags()
-    {
-        return ShareMode == AudioClientShareMode.Exclusive
-            ? 0
-            : base.GetAudioClientStreamFlags();
-    }
-}
 
 public class NoiseGateEngine
 {
@@ -31,14 +17,19 @@ public class NoiseGateEngine
     private readonly double _holdTimeMs = 300;
 
     private WaveInEvent? _sharedCapture;
-    private WasapiCapture? _exclusiveCapture;
+    // Exclusive mode — raw AudioClient, bypassing NAudio's broken WasapiCapture
+    private AudioClient? _exclusiveClient;
+    private AudioCaptureClient? _exclusiveCaptureClient;
+    private Thread? _exclusiveThread;
+    private volatile bool _exclusiveRunning;
+    private WaveFormat? _exclusiveFormat;
     private readonly object _modeLock = new();
 
     private const float MinGatedVolume = 0.05f;
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
-    public bool IsEngaged => _sharedCapture != null || _exclusiveCapture != null;
+    public bool IsEngaged => _sharedCapture != null || _exclusiveRunning;
     public string? LastError { get; private set; }
 
     public NoiseGateEngine(Settings settings) => _settings = settings;
@@ -196,24 +187,74 @@ public class NoiseGateEngine
         OnAudioData(ComputeDB(e.Buffer, e.BytesRecorded));
     }
 
-    // ---- Exclusive mode ----
+    // ---- Exclusive mode (raw AudioClient, bypasses NAudio bugs) ----
 
     private void StartExclusiveCapture()
     {
-        if (_exclusiveCapture != null || _device == null) return;
+        if (_exclusiveRunning || _device == null) return;
         try
         {
-            // Use FixedWasapiCapture to avoid NAudio's broken exclusive mode flags.
-            // Event-driven (useEventSync=true) as required by WASAPI exclusive mode.
-            var capture = new FixedWasapiCapture(_device, true, 10);
-            capture.ShareMode = AudioClientShareMode.Exclusive;
-            capture.DataAvailable += OnExclusiveData;
-            capture.StartRecording();
-            _exclusiveCapture = capture;
+            _exclusiveClient = _device.AudioClient;
+            _exclusiveFormat = _exclusiveClient.MixFormat;
+
+            // Initialize: exclusive, event-driven, no conversion flags
+            long bufferDuration = 100 * 10000; // 10ms in 100ns units
+            _exclusiveClient.Initialize(
+                AudioClientShareMode.Exclusive,
+                AudioClientStreamFlags.EventCallback,
+                bufferDuration,
+                bufferDuration,
+                _exclusiveFormat,
+                Guid.Empty);
+
+            var eventHandle = new EventWaitHandle(false, EventResetMode.AutoReset);
+            _exclusiveClient.SetEventHandle(eventHandle.SafeWaitHandle.DangerousGetHandle());
+            _exclusiveCaptureClient = _exclusiveClient.AudioCaptureClient;
+
+            int bytesPerFrame = _exclusiveFormat.Channels * _exclusiveFormat.BitsPerSample / 8;
+
+            _exclusiveRunning = true;
+            _exclusiveClient.Start();
+
+            _exclusiveThread = new Thread(() =>
+            {
+                while (_exclusiveRunning)
+                {
+                    if (!eventHandle.WaitOne(500)) continue;
+                    if (!_exclusiveRunning) break;
+
+                    int packetSize = _exclusiveCaptureClient.GetNextPacketSize();
+                    while (packetSize > 0 && _exclusiveRunning)
+                    {
+                        var ptr = _exclusiveCaptureClient.GetBuffer(
+                            out int framesAvailable,
+                            out AudioClientBufferFlags flags);
+
+                        int bytesAvailable = framesAvailable * bytesPerFrame;
+
+                        if (bytesAvailable > 0 && (flags & AudioClientBufferFlags.Silent) == 0)
+                        {
+                            var buf = new byte[bytesAvailable];
+                            Marshal.Copy(ptr, buf, 0, bytesAvailable);
+
+                            if (_exclusiveFormat.BitsPerSample >= 32)
+                                OnAudioData(ComputeDBFloat(buf, bytesAvailable));
+                            else
+                                OnAudioData(ComputeDB(buf, bytesAvailable));
+                        }
+
+                        _exclusiveCaptureClient.ReleaseBuffer(framesAvailable);
+                        packetSize = _exclusiveCaptureClient.GetNextPacketSize();
+                    }
+                }
+                eventHandle.Dispose();
+            })
+            { IsBackground = true, Priority = ThreadPriority.Highest };
+            _exclusiveThread.Start();
         }
         catch
         {
-            _exclusiveCapture = null;
+            StopExclusiveCapture();
             LastError = "Exclusive mode failed — falling back to volume reduction.";
             StartSharedCapture();
             SetVolume(_savedVolume * _reductionFactor);
@@ -222,19 +263,13 @@ public class NoiseGateEngine
 
     private void StopExclusiveCapture()
     {
-        if (_exclusiveCapture == null) return;
-        try { _exclusiveCapture.StopRecording(); } catch { }
-        _exclusiveCapture.DataAvailable -= OnExclusiveData;
-        _exclusiveCapture.Dispose();
-        _exclusiveCapture = null;
-    }
-
-    private void OnExclusiveData(object? sender, WaveInEventArgs e)
-    {
-        if (_exclusiveCapture?.WaveFormat.BitsPerSample == 32)
-            OnAudioData(ComputeDBFloat(e.Buffer, e.BytesRecorded));
-        else
-            OnAudioData(ComputeDB(e.Buffer, e.BytesRecorded));
+        _exclusiveRunning = false;
+        _exclusiveThread?.Join(1000);
+        _exclusiveThread = null;
+        try { _exclusiveClient?.Stop(); } catch { }
+        try { _exclusiveClient?.Dispose(); } catch { }
+        _exclusiveClient = null;
+        _exclusiveCaptureClient = null;
     }
 
     // ---- RMS ----

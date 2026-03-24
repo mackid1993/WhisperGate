@@ -115,9 +115,21 @@ public class NoiseGateEngine
         }
     }
 
-    private void SetVolume(float volume)
+    private void SetVolume(float target)
     {
-        try { if (_device != null) _device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f); }
+        if (_device == null) return;
+        try
+        {
+            float current = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
+            // Ramp in steps to avoid audible clicks from instant volume jumps
+            int steps = 10;
+            for (int i = 1; i <= steps; i++)
+            {
+                float v = current + (target - current) * i / steps;
+                _device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(v, 0f, 1f);
+                if (i < steps) System.Threading.Thread.Sleep(5); // ~50ms total ramp
+            }
+        }
         catch { }
     }
 }

@@ -109,7 +109,7 @@ public class NoiseGateEngine
             // At 20%: 20*log10(0.20) = -14dB, minus 3dB margin = -17dB shift
             float attenuationDB = (float)(20 * Math.Log10(Math.Max(_gatedVolume, 0.01)));
             float openThreshold = threshold + attenuationDB - 3;
-            if (db >= openThreshold && (now - _lastStateChange) > MinStateChangeMs)
+            if (db >= openThreshold)
             {
                 _gateIsOpen = true;
                 _lastSpeechTime = now + _holdTimeMs;

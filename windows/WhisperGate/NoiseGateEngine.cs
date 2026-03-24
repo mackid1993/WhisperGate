@@ -13,7 +13,7 @@ public class NoiseGateEngine
     private bool _gateIsOpen = true;
     private double _lastSpeechTime;
     private double _lastStateChange;
-    private readonly double _holdTimeMs = 600;
+    private readonly double _holdTimeMs = 300;
     private const double MinStateChangeMs = 500; // prevent oscillation
 
     private const float OpenVolume = 1.0f;

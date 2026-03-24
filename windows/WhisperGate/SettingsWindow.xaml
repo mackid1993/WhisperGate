@@ -8,27 +8,37 @@
         FontFamily="Segoe UI">
 
     <Window.Resources>
-        <!-- Thin modern scrollbar -->
+        <!-- WinUI3-style scrollbar: thin, rounded, fades in on hover -->
         <Style TargetType="ScrollBar">
-            <Setter Property="Width" Value="6"/>
+            <Setter Property="Width" Value="4"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Opacity" Value="0"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ScrollBar">
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
-                            <Track.Thumb>
-                                <Thumb>
-                                    <Thumb.Template>
-                                        <ControlTemplate>
-                                            <Border Background="#50FFFFFF" CornerRadius="3" Margin="1"/>
-                                        </ControlTemplate>
-                                    </Thumb.Template>
-                                </Thumb>
-                            </Track.Thumb>
-                        </Track>
+                        <Grid>
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate>
+                                                <Border Background="#40FFFFFF" CornerRadius="2" Margin="0,2"
+                                                        MinHeight="20"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="1"/>
+                    <Setter Property="Width" Value="6"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <!-- Modern slider -->

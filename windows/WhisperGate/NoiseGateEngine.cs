@@ -196,39 +196,53 @@ public class NoiseGateEngine
         if (_exclusiveRunning || _device == null) return;
         try
         {
-            _exclusiveClient = _device.AudioClient;
-            _exclusiveFormat = _exclusiveClient.MixFormat;
-            long bufferDuration = 200 * 10000; // 20ms
-
-            // Try event-driven exclusive first, then timer-driven, then shorter buffers
-            Exception? lastEx = null;
-            (AudioClientStreamFlags flags, long dur, long per)[] attempts = {
-                (AudioClientStreamFlags.EventCallback, bufferDuration, bufferDuration),
+            // MixFormat is shared-mode (typically float32) — exclusive mode often
+            // needs plain PCM. Try multiple formats × multiple init strategies.
+            var mixFmt = _device.AudioClient.MixFormat;
+            WaveFormat[] formats = {
+                mixFmt,
+                new WaveFormat(48000, 16, mixFmt.Channels),
+                new WaveFormat(44100, 16, mixFmt.Channels),
+                new WaveFormat(48000, 16, 1),
+                new WaveFormat(44100, 16, 1),
+                new WaveFormat(48000, 16, 2),
+                new WaveFormat(48000, 24, mixFmt.Channels),
+                WaveFormat.CreateIeeeFloatWaveFormat(48000, mixFmt.Channels),
+            };
+            (AudioClientStreamFlags flags, long dur, long per)[] modes = {
+                (AudioClientStreamFlags.EventCallback, 200 * 10000, 200 * 10000),
                 (AudioClientStreamFlags.EventCallback, 100 * 10000, 100 * 10000),
-                (AudioClientStreamFlags.None, bufferDuration, 0),
+                (AudioClientStreamFlags.None, 200 * 10000, 0),
                 (AudioClientStreamFlags.None, 100 * 10000, 0),
             };
 
+            Exception? lastEx = null;
             bool initialized = false;
-            foreach (var (sFlags, dur, per) in attempts)
+            foreach (var fmt in formats)
             {
-                try
+                foreach (var (sFlags, dur, per) in modes)
                 {
-                    _exclusiveClient.Initialize(
-                        AudioClientShareMode.Exclusive, sFlags,
-                        dur, per, _exclusiveFormat, Guid.Empty);
-                    initialized = true;
-                    break;
+                    try
+                    {
+                        _exclusiveClient = _device.AudioClient;
+                        _exclusiveClient.Initialize(
+                            AudioClientShareMode.Exclusive, sFlags,
+                            dur, per, fmt, Guid.Empty);
+                        _exclusiveFormat = fmt;
+                        initialized = true;
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        lastEx = ex;
+                        try { _exclusiveClient.Dispose(); } catch { }
+                        _exclusiveClient = null;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    lastEx = ex;
-                    try { _exclusiveClient.Dispose(); } catch { }
-                    _exclusiveClient = _device.AudioClient;
-                }
+                if (initialized) break;
             }
 
-            if (!initialized)
+            if (!initialized || _exclusiveClient == null)
                 throw lastEx ?? new InvalidOperationException("All exclusive mode attempts failed");
 
             _exclusiveCaptureClient = _exclusiveClient.AudioCaptureClient;

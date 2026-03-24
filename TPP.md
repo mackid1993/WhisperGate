@@ -5,90 +5,91 @@ WhisperGate is a lightweight noise gate for superwhisper dictation. Filters back
 
 ## Current State (2026-03-23)
 
-### Status: macOS v1.1.0 SHIPPED, Windows BROKEN — needs fixes
+### macOS: v1.1.0 SHIPPED — DO NOT TOUCH
+Virtual mic driver works perfectly. True silence via chunk replacement.
 
-**macOS: DONE.** Virtual mic driver works. Do not touch Mac code.
+### Windows: BROKEN — needs rewrite to system volume approach
 
-**Windows: Two open issues.**
-1. WASAPI exclusive mode fails on all format/init combinations
-2. Gate open threshold compensation is unreliable at low gated volumes
+## CRITICAL: Windows Must Be Fixed
 
-## CRITICAL: Windows Issues
+### What Works on Windows
+- Hotkey detection (WH_KEYBOARD_LL)
+- superwhisper shortcut sync
+- Sleep/wake hook re-registration
+- Single instance enforcement
+- UI (settings window, tray icon)
+- RMS calculation via WaveInEvent (Int16, 48kHz mono, 50ms buffers)
+- Finding superwhisper's PID via AudioSessionManager
 
-### Issue 1: WASAPI Exclusive Mode Fails
+### What's Broken
+The gate logic has been rewritten ~20 times and is currently non-functional. The per-app volume approach (`SimpleAudioVolume` on superwhisper's capture session) was proven to kill ALL capture on the device — both WasapiCapture (-144dB) and WaveInEvent (-96dB) go silent when any session volume is set to 0.
 
-**Goal:** True silence when gated (like Mac's virtual mic) by grabbing the mic in WASAPI exclusive mode — other apps (superwhisper) get silence.
+### The Only Approach That Works on Windows
+**System volume manipulation** — the original v1.0 approach:
+- Gate closed: `device.AudioEndpointVolume.MasterVolumeLevelScalar = savedVolume * reductionFactor`
+- Gate open: `device.AudioEndpointVolume.MasterVolumeLevelScalar = savedVolume`
+- Detection via WaveInEvent at whatever the current volume is
+- `threshold - 6` hysteresis (same as Mac)
 
-**What happens:** `AudioClient.Initialize` returns `0x88890008` (`AUDCLNT_E_UNSUPPORTED_FORMAT`) for every format tried. The brute-force approach (8 formats × 4 init strategies = 32 attempts) all fail.
+This worked in v1.0. All the subsequent changes broke it.
 
-**Root cause confirmed:** NAudio 2.2.1's `AudioClient.IsFormatSupported` is broken for exclusive mode — passes non-null `ppClosestMatch` which violates WASAPI spec. This was fixed in NAudio PR #1122 but not released in 2.2.1.
+### What the Next Session Must Do
+1. **Revert NoiseGateEngine.cs to the simple system volume approach** — no per-app volume, no exclusive mode, no WasapiCapture. Just WaveInEvent + system volume. Match Mac's gate logic exactly.
+2. **Remove all dead UI elements** — no True Silence toggle, no Exclusive Mode, no Force Max Volume. Just threshold slider and gated volume slider (minimum 5%).
+3. **Add the Sophist-style hard gate as an option** — when enabled, every chunk: `db >= threshold` → full volume, `db < threshold` → gated volume. No hold time, no hysteresis. Simple.
+4. **Test thoroughly** before committing.
+5. **Clean up Settings.cs** — remove ExclusiveModeEnabled and any other dead settings.
 
-**What to try next (in order):**
-1. Read `PKEY_AudioEngine_DeviceFormat` from the device property store (`PropertyKey("f19f064d-082c-4e27-bc73-6882a1bb8e4c", 0)`) — this is the device's native format, guaranteed to work for exclusive mode
-2. Call `IAudioClient::IsFormatSupported` via raw COM vtable with `IntPtr.Zero` for `ppClosestMatch`, bypassing NAudio's broken wrapper
-3. Try `WaveFormatExtensible` with correct `SubFormat` GUIDs (`KSDATAFORMAT_SUBTYPE_PCM`, `KSDATAFORMAT_SUBTYPE_IEEE_FLOAT`) — some drivers only accept extensible format
-4. Handle `AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED` (0x88890019) by getting aligned buffer size and retrying
-
-**Reference code from research agent (saved in conversation context):**
-- `WasapiExclusiveFix.IsFormatSupportedExclusive()` — raw COM vtable call
-- `WasapiExclusiveFix.GetDeviceNativeFormat()` — reads PKEY_AudioEngine_DeviceFormat
-- `WasapiExclusiveFix.InitializeExclusiveCapture()` — direct Initialize with error handling
-
-**Current code:** `windows/WhisperGate/NoiseGateEngine.cs` — `StartExclusiveCapture()` uses raw `AudioClient` (not NAudio's `WasapiCapture`). Tries 32 format×mode combos, all fail.
-
-### Issue 2: Gate Open Threshold
-
-**Goal:** Gate should open when user speaks, regardless of gated volume setting.
-
-**Problem:** On Windows, capture level drops with system volume. At low gated volumes (5-20%), captured speech is too quiet to cross `threshold - 6` hysteresis.
-
-**Why Mac doesn't have this:** Mac virtual mic captures at full volume always. The threshold comparison is against full-volume audio. On Windows without exclusive mode, capture IS at the gated volume.
-
-**Current formula:** `openThreshold = threshold + 20*log10(reductionFactor) - 8`
-This should work mathematically but user reports it's still unreliable.
-
-**IMPORTANT RULE:** Match Mac's gate logic EXACTLY. Do NOT add per-buffer volume forcing, compensation formulas, or extra features. The Mac code sets volume on state transitions only:
-- Gate opens → `SetVolume(savedVolume)` (or 1.0f)
-- Gate closes → `SetVolume(reductionFactor)`
-- Never touch volume during steady state
-
-### Failed Windows Approaches (Do NOT Retry)
-- **NAudio `WasapiCapture` with `ShareMode = Exclusive`** — NAudio passes `AutoConvertPcm|SrcDefaultQuality` flags which WASAPI rejects in exclusive mode. NAudio 2.2.1 doesn't have the fix.
-- **Subclassing `WasapiCapture` to override `GetAudioClientStreamFlags`** — Method not virtual in 2.2.1.
-- **`WaveInEvent` capture with mute toggle** — Mute affects WaveInEvent too, capture goes deaf.
-- **Volume 0 with pulsed detection** — WaveInEvent doesn't recover after volume raised from 0.
-- **ForceMaxVolume (set 1.0f every buffer)** — Causes gate chatter. Volume must only change on transitions.
-- **dB compensation on LatestDB** — Broke the level meter display. Only compensate the threshold comparison.
-- **NAudio `IsFormatSupported` for exclusive mode** — Broken in 2.2.1, always returns false.
-
-## macOS — COMPLETE, DO NOT MODIFY
-
-### Virtual Mic Driver
-- HAL plugin at `/Library/Audio/Plug-Ins/HAL/WhisperGateAudio.driver`
-- IPC via mmap'd file at `/tmp/whispergate_audio.buf` (permissions `0o666`)
-- `kDevice_RingBufferSize = 16384`, `kRing_Buffer_Frame_Size = 65536`
-- coreaudiod sandbox blocks `shm_open` and `~/` access — use `/tmp/`
-- `CanBeDefaultDevice = 0` — only selectable manually in superwhisper
-- Tested on multiple Macs, zero CPU overhead
-
-### Key Files
+### Reference: Working Mac Gate Logic (NoiseGateEngine.swift)
+```swift
+if gateIsOpen {
+    if db >= cachedThreshold {
+        lastSpeechTime = now
+    } else if (now - lastSpeechTime) > cachedHoldTime {
+        gateIsOpen = false
+        // set volume to gated level
+    }
+} else {
+    if db >= cachedThreshold - 6 {
+        gateIsOpen = true
+        lastSpeechTime = now
+        // set volume to saved level
+    }
+}
 ```
-macos/HALPlugin/WhisperGateDriver.c  — AudioServerPlugin (~500 lines C)
-macos/Sources/NoiseGateEngine.swift  — Gate logic + ring buffer writing
-macos/Sources/SharedRingBuffer.swift — mmap'd file IPC
-macos/Sources/DriverInstaller.swift  — Install/uninstall with admin
-macos/Sources/AppState.swift         — virtualMicEnabled toggle
-macos/build.sh                       — Builds app + HAL plugin
+Key: volume only changes on state transitions. Never per-buffer. Capture is always at whatever volume is set — no separate detection path.
+
+### Reference: Sophist Hard Gate (from technical paper)
 ```
+if rmsDB < threshold:
+    output silence (or set volume to gated level)
+else:
+    pass through (or set volume to full)
+```
+No state. No hysteresis. No hold time. Per-chunk decision.
+
+## PROVEN FAILURES on Windows — Do NOT Retry
+- **Per-app capture volume (SimpleAudioVolume)** — kills ALL capture on the device, not just the target app. Both WasapiCapture and WaveInEvent go silent.
+- **WASAPI exclusive mode** — NAudio 2.2.1's IsFormatSupported broken (non-null ppClosestMatch for exclusive). AudioClient.Initialize fails with AUDCLNT_E_UNSUPPORTED_FORMAT for all format/mode combinations. MixFormat rejected. Native format from property store rejected.
+- **WasapiCapture for detection** — gets silence when per-app volume is 0. Not independent.
+- **Mute toggle (AudioEndpointVolume.Mute)** — affects WaveInEvent capture too.
+- **ForceMaxVolume (set 1.0f every buffer)** — causes gate chatter/oscillation.
+- **dB compensation formulas** — unreliable, broke level meter display.
+- **Pulsed detection (unmute briefly to detect)** — WaveInEvent doesn't recover after volume raised from 0.
+- **Three-state gate** — overcomplicated, introduced more bugs.
 
 ## Windows Key Files
 ```
-windows/WhisperGate/NoiseGateEngine.cs    — Gate logic + exclusive mode
-windows/WhisperGate/Settings.cs           — ExclusiveModeEnabled toggle
-windows/WhisperGate/SettingsWindow.xaml   — UI with exclusive mode toggle + error display
-windows/WhisperGate/App.xaml.cs           — Sleep/wake hook re-registration
-windows/WhisperGate/HotkeyManager.cs      — WH_KEYBOARD_LL hook
+windows/WhisperGate/NoiseGateEngine.cs    — NEEDS REWRITE
+windows/WhisperGate/Settings.cs           — Remove dead settings
+windows/WhisperGate/SettingsWindow.xaml   — Remove dead UI elements
+windows/WhisperGate/SettingsWindow.xaml.cs — Remove dead handlers
+windows/WhisperGate/App.xaml.cs           — Sleep/wake + single instance (keep)
+windows/WhisperGate/HotkeyManager.cs      — Working (keep)
 ```
+
+## macOS — COMPLETE, DO NOT MODIFY
+Virtual mic driver at `/Library/Audio/Plug-Ins/HAL/WhisperGateAudio.driver`. IPC via `/tmp/whispergate_audio.buf`. Zero CPU. Tested on multiple Macs.
 
 ## Build
 - macOS: `cd macos && ./build.sh`

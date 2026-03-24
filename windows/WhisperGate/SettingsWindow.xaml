@@ -152,8 +152,6 @@
                     <TextBlock Text="Set just above your room noise level." FontSize="11"
                                Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,12"/>
 
-                    <!-- superwhisper status -->
-                    <TextBlock x:Name="SuperwhisperStatus" Text="" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
                 </StackPanel>
             </Border>
 

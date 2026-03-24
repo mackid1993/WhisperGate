@@ -48,7 +48,7 @@ public partial class SettingsWindow : Window
             else
             {
                 StatusText.Text = "Silenced";
-                StatusDetail.Text = "superwhisper mic muted — listening for speech";
+                StatusDetail.Text = "Mic at zero — listening for speech";
                 StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x38));
             }
             var norm = Math.Max(0, Math.Min(1, (engine.LatestDB + 80) / 80));
@@ -60,20 +60,6 @@ public partial class SettingsWindow : Window
             StatusDetail.Text = "Waiting for superwhisper hotkey";
             StatusDot.Fill = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E));
             LevelFill.Width = 0;
-        }
-
-        // Show superwhisper detection status
-        if (engine.StatusMessage != null)
-        {
-            SuperwhisperStatus.Text = engine.StatusMessage;
-            SuperwhisperStatus.Foreground = engine.StatusMessage.Contains("Detected")
-                ? new SolidColorBrush(Color.FromRgb(0x6C, 0xCB, 0x5F))
-                : new SolidColorBrush(Color.FromRgb(0xFC, 0xB9, 0x38));
-            SuperwhisperStatus.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            SuperwhisperStatus.Visibility = Visibility.Collapsed;
         }
     }
 

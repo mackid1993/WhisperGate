@@ -119,10 +119,9 @@ public class NoiseGateEngine
         }
         else
         {
-            // Open threshold: scale hysteresis with actual volume reduction.
-            // Original design: 10dB for 30% reduction + 4dB hysteresis = threshold-6.
-            // Dynamic: reductionDB (negative) + 4dB hysteresis.
-            // Exclusive mode: capture is at full volume, just use threshold-6.
+            // Open threshold must account for volume reduction on the captured signal.
+            // Voice at full volume = threshold. At reduced volume = threshold + reductionDB.
+            // Subtract 4dB margin so the gate opens reliably.
             float openThreshold;
             if (_settings.ExclusiveModeEnabled)
             {
@@ -131,7 +130,7 @@ public class NoiseGateEngine
             else
             {
                 float reductionDB = (float)(20 * Math.Log10(Math.Max(_reductionFactor, 0.001)));
-                openThreshold = threshold + reductionDB + 4;
+                openThreshold = threshold + reductionDB - 4;
             }
 
             if (db >= openThreshold)

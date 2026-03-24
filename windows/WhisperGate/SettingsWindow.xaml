@@ -133,7 +133,7 @@
                        Foreground="{StaticResource FgBrush}" Margin="0,0,0,4"/>
             <TextBlock TextWrapping="Wrap" FontSize="11"
                        Foreground="{StaticResource FgTertiaryBrush}" Margin="0,0,0,10"
-                       Text="WhisperGate reduces your mic volume when you're not speaking, then restores it instantly when you talk. Adjust both settings so the gate opens reliably when you speak but stays closed during silence."/>
+                       Text="WhisperGate reduces your mic volume when you're not speaking, then boosts it to 100% the instant you start talking. Your original volume is restored when you stop dictating. Adjust both settings so the gate opens reliably when you speak but stays closed during silence."/>
 
             <Border Background="{StaticResource CardBrush}" CornerRadius="8"
                     Padding="16" Margin="0,0,0,8"

@@ -119,38 +119,33 @@ public class NoiseGateEngine
         }
     }
 
-    private volatile float _targetVolume = 1f;
-    private System.Threading.Thread? _rampThread;
-
-    private void SetVolume(float target)
+    private void SetVolume(float volume)
     {
-        _targetVolume = target;
-        if (_rampThread == null || !_rampThread.IsAlive)
+        // Open instantly (speech should come through immediately).
+        // Close with a short fade to avoid harsh cutoff.
+        if (_device == null) return;
+        if (volume >= OpenVolume)
+        {
+            try { _device.AudioEndpointVolume.MasterVolumeLevelScalar = volume; } catch { }
+        }
+        else
         {
             var dev = _device;
-            _rampThread = new System.Threading.Thread(() =>
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
                 try
                 {
-                    while (dev != null)
+                    float cur = dev.AudioEndpointVolume.MasterVolumeLevelScalar;
+                    int steps = 5;
+                    for (int i = 1; i <= steps; i++)
                     {
-                        float cur = dev.AudioEndpointVolume.MasterVolumeLevelScalar;
-                        float tgt = _targetVolume;
-                        if (Math.Abs(cur - tgt) < 0.01f)
-                        {
-                            dev.AudioEndpointVolume.MasterVolumeLevelScalar = tgt;
-                            break;
-                        }
-                        // Smooth ramp: move 30% of the way each step
-                        float next = cur + (tgt - cur) * 0.3f;
-                        dev.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(next, 0f, 1f);
-                        System.Threading.Thread.Sleep(5);
+                        float v = cur + (volume - cur) * i / steps;
+                        dev.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(v, 0f, 1f);
+                        if (i < steps) System.Threading.Thread.Sleep(3);
                     }
                 }
                 catch { }
-            })
-            { IsBackground = true };
-            _rampThread.Start();
+            });
         }
     }
 }

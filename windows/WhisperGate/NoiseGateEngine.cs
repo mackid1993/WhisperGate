@@ -16,8 +16,11 @@ public class NoiseGateEngine
     private readonly double _holdTimeMs = 600;
     private const double MinStateChangeMs = 500; // prevent oscillation
 
-    private const float GatedVolume = 0.05f; // 5% floor
-    private const float OpenVolume = 1.0f;   // 100% when speaking
+    // 20% gated volume: enough signal for reliable detection in feedback
+    // topology, small enough that STT ignores it, and the 20%→100% jump
+    // is only 14dB (much smoother than 5%→100% at 26dB).
+    private const float GatedVolume = 0.20f;
+    private const float OpenVolume = 1.0f;
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
@@ -101,10 +104,11 @@ public class NoiseGateEngine
         }
         else
         {
-            // Theoretical volume drop: 20*log10(GatedVolume).
-            // Multiply by 1.5 to account for non-linear mic behavior at low volumes.
-            float volumeDropDB = (float)(1.5 * 20 * Math.Log10(GatedVolume));
-            float openThreshold = threshold + volumeDropDB;
+            // Standard compensated threshold (from audio engineering):
+            // open_threshold = close_threshold + 20*log10(reductionFactor) - hysteresis
+            // At 20%: 20*log10(0.20) = -14dB, minus 3dB margin = -17dB shift
+            float attenuationDB = (float)(20 * Math.Log10(GatedVolume));
+            float openThreshold = threshold + attenuationDB - 3;
             if (db >= openThreshold && (now - _lastStateChange) > MinStateChangeMs)
             {
                 _gateIsOpen = true;
@@ -115,9 +119,38 @@ public class NoiseGateEngine
         }
     }
 
-    private void SetVolume(float volume)
+    private volatile float _targetVolume = 1f;
+    private System.Threading.Thread? _rampThread;
+
+    private void SetVolume(float target)
     {
-        try { if (_device != null) _device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f); }
-        catch { }
+        _targetVolume = target;
+        if (_rampThread == null || !_rampThread.IsAlive)
+        {
+            var dev = _device;
+            _rampThread = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    while (dev != null)
+                    {
+                        float cur = dev.AudioEndpointVolume.MasterVolumeLevelScalar;
+                        float tgt = _targetVolume;
+                        if (Math.Abs(cur - tgt) < 0.01f)
+                        {
+                            dev.AudioEndpointVolume.MasterVolumeLevelScalar = tgt;
+                            break;
+                        }
+                        // Smooth ramp: move 30% of the way each step
+                        float next = cur + (tgt - cur) * 0.3f;
+                        dev.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(next, 0f, 1f);
+                        System.Threading.Thread.Sleep(5);
+                    }
+                }
+                catch { }
+            })
+            { IsBackground = true };
+            _rampThread.Start();
+        }
     }
 }

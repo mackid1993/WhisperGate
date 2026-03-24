@@ -150,10 +150,7 @@
                             IsSnapToTickEnabled="True" TickFrequency="1"
                             ValueChanged="OnThresholdChanged"/>
                     <TextBlock Text="Set just above your room noise level." FontSize="11"
-                               Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,8"/>
-                    <TextBlock x:Name="GateStatus" Text="" FontSize="11"
-                               FontFamily="Cascadia Mono,Consolas"
-                               Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap"/>
+                               Foreground="{StaticResource FgTertiaryBrush}" Margin="0,6,0,0"/>
                 </StackPanel>
             </Border>
 

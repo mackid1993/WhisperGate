@@ -62,7 +62,6 @@ public partial class SettingsWindow : Window
             LevelFill.Width = 0;
         }
 
-        GateStatus.Text = engine.StatusMessage ?? "";
     }
 
     private void OnThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

@@ -22,7 +22,6 @@ public class NoiseGateEngine
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
     public bool IsEngaged => _waveIn != null;
-    public string? StatusMessage { get; private set; }
 
     public NoiseGateEngine(Settings settings) => _settings = settings;
 
@@ -82,7 +81,6 @@ public class NoiseGateEngine
         }
         float db = sum > 0 ? (float)(10 * Math.Log10(sum / samples)) : -160;
         LatestDB = db;
-        StatusMessage = $"db={db:F1} thr={_settings.Threshold:F0} gate={(_gateIsOpen ? "OPEN" : "CLOSED")}";
 
         double now = Environment.TickCount64;
         float threshold = _settings.Threshold;

@@ -49,10 +49,13 @@ public class NoiseGateEngine
             _waveIn.DataAvailable += OnDataAvailable;
             _waveIn.StartRecording();
 
-            // Start gated
+            // Start gated — superwhisper hears silence until speech detected
             _gateIsOpen = false;
             _lastSpeechTime = 0;
-            SetSuperwhisperVolume(0f);
+            if (_superwhisperVolume != null)
+                SetSuperwhisperVolume(0f);
+            else
+                StatusMessage = "superwhisper session not found — start a dictation in superwhisper first, then re-engage.";
         }
         catch { DisengageGate(); }
     }

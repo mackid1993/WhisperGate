@@ -12,7 +12,7 @@ public class NoiseGateEngine
     private float _savedVolume = 1f;
     private bool _gateIsOpen = true;
     private double _lastSpeechTime;
-    private readonly double _holdTimeMs = 300;
+    private readonly double _holdTimeMs = 600;
 
     private const float GatedVolume = 0.05f; // 5% floor
     private const float OpenVolume = 1.0f;   // 100% when speaking
@@ -107,7 +107,9 @@ public class NoiseGateEngine
             if (db >= openThreshold)
             {
                 _gateIsOpen = true;
-                _lastSpeechTime = now;
+                // Set lastSpeechTime to now + holdTime so the gate
+                // can't close until the volume change takes effect
+                _lastSpeechTime = now + _holdTimeMs;
                 SetVolume(OpenVolume);
             }
         }

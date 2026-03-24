@@ -10,13 +10,13 @@ public class NoiseGateEngine
     private readonly Settings _settings;
     private MMDevice? _device;
     private WasapiCapture? _capture;
-    private bool _gateIsOpen = true;
-    private double _lastSpeechTime;
-    private readonly double _holdTimeMs = 300;
 
     // Per-app volume control for superwhisper's capture session
     private SimpleAudioVolume? _swVolume;
     private int _swPid;
+
+    // Gate state for UI display
+    private bool _gateIsOpen = true;
 
     public float LatestDB { get; private set; } = -160;
     public bool IsGateOpen => _gateIsOpen;
@@ -34,20 +34,17 @@ public class NoiseGateEngine
             var enumerator = new MMDeviceEnumerator();
             _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
 
-            // Find superwhisper
             _swVolume = FindSuperwhisperSession(_device, out _swPid);
             StatusMessage = _swVolume != null
                 ? $"Detected superwhisper (PID {_swPid})"
                 : "superwhisper not detected — start a dictation first, then re-engage.";
 
-            // Use WasapiCapture in shared mode for our detection
             _capture = new WasapiCapture(_device, false, 50);
             _capture.DataAvailable += OnDataAvailable;
             _capture.StartRecording();
 
             // Start gated
             _gateIsOpen = false;
-            _lastSpeechTime = 0;
             SetSW(0f);
         }
         catch { DisengageGate(); }
@@ -67,32 +64,22 @@ public class NoiseGateEngine
         _gateIsOpen = true;
     }
 
+    // ---- Per-chunk gate decision (Sophist pattern) ----
+    // Every chunk: RMS above threshold = pass audio, below = silence.
+    // No state machine. No hysteresis. No hold time.
+    // The per-app volume control IS the chunk replacement.
+
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
         float db = ComputeDB(e.Buffer, e.BytesRecorded, _capture?.WaveFormat);
         LatestDB = db;
 
-        double now = Environment.TickCount64;
-        float threshold = _settings.Threshold;
+        bool shouldOpen = db >= _settings.Threshold;
 
-        if (_gateIsOpen)
+        if (shouldOpen != _gateIsOpen)
         {
-            if (db >= threshold)
-                _lastSpeechTime = now;
-            else if ((now - _lastSpeechTime) > _holdTimeMs)
-            {
-                _gateIsOpen = false;
-                SetSW(0f);
-            }
-        }
-        else
-        {
-            if (db >= threshold - 6)
-            {
-                _gateIsOpen = true;
-                _lastSpeechTime = now;
-                SetSW(1f);
-            }
+            _gateIsOpen = shouldOpen;
+            SetSW(shouldOpen ? 1f : 0f);
         }
     }
 
@@ -132,13 +119,14 @@ public class NoiseGateEngine
     private static float ComputeDB(byte[] buf, int bytes, WaveFormat? fmt)
     {
         if (fmt == null) return -160;
-
         if (fmt.BitsPerSample == 32)
         {
-            int n = bytes / 4;
+            int n = bytes / (4 * fmt.Channels);
             if (n == 0) return -160;
             double sum = 0;
-            for (int i = 0; i < bytes; i += 4)
+            int step = 4 * fmt.Channels;
+            // Use first channel only for RMS
+            for (int i = 0; i < bytes - 3; i += step)
             {
                 double s = BitConverter.ToSingle(buf, i);
                 sum += s * s;
@@ -147,10 +135,11 @@ public class NoiseGateEngine
         }
         else
         {
-            int n = bytes / 2;
+            int n = bytes / (2 * fmt.Channels);
             if (n == 0) return -160;
             double sum = 0;
-            for (int i = 0; i < bytes; i += 2)
+            int step = 2 * fmt.Channels;
+            for (int i = 0; i < bytes - 1; i += step)
             {
                 double s = BitConverter.ToInt16(buf, i) / 32768.0;
                 sum += s * s;

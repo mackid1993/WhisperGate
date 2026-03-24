@@ -101,9 +101,9 @@ public class NoiseGateEngine
         }
         else
         {
-            // At 5% volume, signal is 26dB quieter than at 100%.
-            // 20*log10(0.05) = -26. Shift threshold down by that amount.
-            float openThreshold = threshold - 26;
+            // At 5% volume, signal drops significantly. Add extra margin
+            // beyond the theoretical 26dB to account for non-linear mic behavior.
+            float openThreshold = threshold - 40;
             if (db >= openThreshold && (now - _lastStateChange) > MinStateChangeMs)
             {
                 _gateIsOpen = true;

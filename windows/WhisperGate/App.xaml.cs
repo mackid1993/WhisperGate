@@ -90,9 +90,36 @@ public partial class App : Application
                 {
                     Hotkeys.Unregister();
                     Hotkeys.Register();
+                    UpdateTrayState(false, false);
                 });
             }
         };
+
+        // Re-register hotkeys after lock/unlock (hook can be silently removed)
+        SystemEvents.SessionSwitch += (_, args) =>
+        {
+            if (args.Reason == SessionSwitchReason.SessionUnlock)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    Hotkeys.Unregister();
+                    Hotkeys.Register();
+                    UpdateTrayState(false, false);
+                });
+            }
+        };
+
+        // Watchdog: re-register hook periodically to guard against silent removal
+        var hookWatchdog = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(60)
+        };
+        hookWatchdog.Tick += (_, _) =>
+        {
+            Hotkeys.Unregister();
+            Hotkeys.Register();
+        };
+        hookWatchdog.Start();
 
         // Hide the main window on startup — tray only
         MainWindow?.Hide();

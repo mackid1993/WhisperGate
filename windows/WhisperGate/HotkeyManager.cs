@@ -58,6 +58,11 @@ public class HotkeyManager : IDisposable
 
     public void Register()
     {
+        // If gate was engaged from a previous hook session, disengage it
+        // to avoid stuck state (e.g. key-down seen but key-up missed)
+        if (_pttWasDown || _isRecordingToggled)
+            _engine.DisengageGate();
+
         _pttWasDown = false;
         _recWasDown = false;
         _isRecordingToggled = false;
@@ -66,7 +71,6 @@ public class HotkeyManager : IDisposable
         using var curProcess = Process.GetCurrentProcess();
         using var curModule = curProcess.MainModule!;
         _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, GetModuleHandle(curModule.ModuleName), 0);
-
     }
 
     public void Unregister()
